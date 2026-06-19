@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#050510">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>SCAN &amp; LOAD - Punto Cero</title>
+
+    <!-- ===================== LIBRERÍAS EXTERNAS ===================== -->
+    <!-- Google Identity Services (OAuth2 moderna) -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- html5-qrcode: lee Code 39, Code 128, EAN-13, EAN-8, UPC-A, QR -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <!-- ===================== ESTILOS CYBERPUNK / GLASSMORPHISM ===================== -->
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            /* Fondo oscuro con gradiente diagonal futurista */
+            background: linear-gradient(135deg, #050510 0%, #0a0a1a 50%, #150a25 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+
+        /* Efecto de grano sutil de fondo */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                radial-gradient(circle at 20% 30%, rgba(0, 243, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(255, 0, 128, 0.05) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 440px;
+            min-height: 100vh;
+            padding: 30px 20px 50px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Efecto Glassmorphism en el contenedor */
+        .app-container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-left: 1px solid rgba(0, 243, 255, 0.08);
+            border-right: 1px solid rgba(255, 0, 128, 0.08);
+            z-index: -1;
+        }
+
+        /* ===== HEADER ===== */
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .logo-icon {
+            display: inline-block;
+            width: 60px;
+            height: 60px;
+            border: 2px solid #00f3ff;
+            border-radius: 50%;
+            margin-bottom: 10px;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.5), inset 0 0 15px rgba(0, 243, 255, 0.2);
+            animation: pulse 2.5s infinite ease-in-out;
+        }
+
+        .logo-icon::before, .logo-icon::after {
+            content: '';
+            position: absolute;
+            background: #00f3ff;
+            box-shadow: 0 0 8px #00f3ff;
+        }
+        .logo-icon::before {
+            top: 50%; left: 25%;
+            width: 50%; height: 2px;
+            transform: translateY(-50%);
+        }
+        .logo-icon::after {
+            left: 50%; top: 25%;
+            width: 2px; height: 50%;
+            transform: translateX(-50%);
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(0, 243, 255, 0.5), inset 0 0 15px rgba(0, 243, 255, 0.2); }
+            50% { box-shadow: 0 0 35px rgba(0, 243, 255, 0.8), inset 0 0 20px rgba(0, 243, 255, 0.4); }
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: #00f3ff;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.6), 0 0 25px rgba(0, 243, 255, 0.3);
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            font-size: 11px;
+            color: #8b8b9e;
+            font-weight: 500;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* ===== ESTADO DE GOOGLE LOGIN ===== */
+        .auth-bar {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            border-radius: 10px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        .auth-bar .label { color: #8b8b9e; letter-spacing: 1px; }
+        .auth-bar .status-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            background: #ff0080;
+            box-shadow: 0 0 8px #ff0080;
+        }
+        .auth-bar.connected .status-dot {
+            background: #34c759;
+            box-shadow: 0 0 8px #34c759;
+        }
+        #btnAuth {
+            background: transparent;
+            color: #00f3ff;
+            border: 1px solid #00f3ff;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        #btnAuth:hover { background: rgba(0, 243, 255, 0.15); }
+
+        /* ===== CAJA DE CÁMARA ===== */
+        .scanner-box {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #000;
+            border-radius: 20px;
+            overflow: hidden;
+            margin-bottom: 18px;
+            border: 1px solid rgba(0, 243, 255, 0.25);
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.6);
+        }
+
+        #reader { width: 100%; height: 100%; }
+        #reader video {
+            object-fit: cover !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        /* Ocultar UI por defecto de html5-qrcode */
+        #reader img { display: none !important; }
+        #reader__dashboard_section_csr button { display: none !important; }
+        #reader__dashboard_section_swaplink { display: none !important; }
+        #reader__status_span { display: none !important; }
+        #reader__header_message { display: none !important; }
+
+        /* Marco guía neón */
+        .scan-overlay {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 75%;
+            height: 55%;
+            border: 2px solid rgba(0, 243, 255, 0.6);
+            border-radius: 14px;
+            pointer-events: none;
+            box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45),
+                        0 0 20px rgba(0, 243, 255, 0.4),
+                        inset 0 0 15px rgba(0, 243, 255, 0.15);
+        }
+        /* Esquinas marcadas */
+        .scan-overlay::before, .scan-overlay::after,
+        .corner-tl, .corner-br {
+            content: '';
+            position: absolute;
+            width: 24px; height: 24px;
+            border: 3px solid #00f3ff;
+            box-shadow: 0 0 10px #00f3ff;
+        }
+        .scan-overlay::before {
+            top: -3px; left: -3px;
+            border-right: none; border-bottom: none;
+            border-top-left-radius: 8px;
+        }
+        .scan-overlay::after {
+            bottom: -3px; right: -3px;
+            border-left: none; border-top: none;
+            border-bottom-right-radius: 8px;
+        }
+        .corner-tl {
+            top: -3px; right: -3px;
+            border-left: none; border-bottom: none;
+            border-top-right-radius: 8px;
+        }
+        .corner-br {
+            bottom: -3px; left: -3px;
+            border-right: none; border-top: none;
+            border-bottom-left-radius: 8px;
+        }
+
+        /* Línea de escaneo animada */
+        .scan-line {
+            position: absolute;
+            left: 5%; right: 5%;
+            top: 50%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00f3ff, transparent);
+            box-shadow: 0 0 12px #00f3ff;
+            animation: scanMove 2.5s infinite linear;
+            pointer-events: none;
+        }
+        @keyframes scanMove {
+            0% { top: 25%; opacity: 0; }
+            10% { opacity: 1; }
+            50% { top: 75%; opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 25%; opacity: 0; }
+        }
+        .scanner-box.idle .scan-line { display: none; }
+
+        /* Mensaje cuando la cámara está apagada */
+        .camera-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #5a5a6e;
+            font-size: 13px;
+            text-align: center;
+            padding: 20px;
+        }
+        .camera-placeholder .icon { font-size: 42px; margin-bottom: 10px; opacity: 0.5; }
+
+        /* ===== TARJETA DE ESTADO ===== */
+        .status-card {
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 14px;
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .status-card .label-block .label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #8b8b9e;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .status-card .value {
+            font-size: 22px;
+            font-weight: 800;
+            color: #ff0080;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px rgba(255, 0, 128, 0.6);
+            font-family: 'Courier New', monospace;
+        }
+        .status-card .value.active {
+            color: #00f3ff;
+            text-shadow: 0 0 12px rgba(0, 243, 255, 0.7);
+        }
+        .status-card .photo-counter {
+            font-size: 11px;
+            color: #8b8b9e;
+            text-align: right;
+        }
+        .status-card .photo-counter strong {
+            display: block;
+            font-size: 18px;
+            color: #34c759;
+            font-weight: 700;
+            text-shadow: 0 0 8px rgba(52, 199, 89, 0.5);
+        }
+
+        /* ===== BOTONES ===== */
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #00f3ff;
+            border: 1.5px solid rgba(0, 243, 255, 0.5);
+        }
+        .btn-outline:hover {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: #00f3ff;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+        .btn-outline.active {
+            background: rgba(255, 0, 128, 0.15);
+            color: #ff0080;
+            border-color: #ff0080;
+            box-shadow: 0 0 15px rgba(255, 0, 128, 0.4);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ff0080 0%, #c000ff 100%);
+            color: #ffffff;
+            border: none;
+            box-shadow: 0 4px 20px rgba(255, 0, 128, 0.4), 0 0 25px rgba(192, 0, 255, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 25px rgba(255, 0, 128, 0.6), 0 0 30px rgba(192, 0, 255, 0.5);
+        }
+        .btn-primary:disabled {
+            background: #2a2a3a;
+            color: #5a5a6e;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* ===== ÁREA DE LOG ===== */
+        .log-area {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(0, 243, 255, 0.15);
+            border-radius: 12px;
+            padding: 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #00f3ff;
+            min-height: 60px;
+            max-height: 120px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            text-shadow: 0 0 4px rgba(0, 243, 255, 0.5);
+        }
+        .log-area .log-line { margin-bottom: 4px; line-height: 1.4; }
+        .log-area .log-line.success { color: #34c759; }
+        .log-area .log-line.error { color: #ff0080; }
+        .log-area .log-line.warning { color: #ffaa00; }
+
+        /* ===== GALERÍA DE FOTOS TOMADAS ===== */
+        .gallery-title {
+            font-size: 11px;
+            color: #8b8b9e;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        .gallery-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(0, 243, 255, 0.2);
+        }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+        .gallery-item .badge {
+            position: absolute;
+            bottom: 2px; left: 2px;
+            background: rgba(0, 243, 255, 0.9);
+            color: #000;
+            font-size: 8px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+        .gallery-empty {
+            grid-column: span 4;
+            text-align: center;
+            color: #5a5a6e;
+            font-size: 11px;
+            padding: 20px;
+            border: 1px dashed rgba(139, 139, 158, 0.2);
+            border-radius: 8px;
+        }
+
+        /* ===== TOAST / NOTIFICACIÓN ===== */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: rgba(10, 10, 26, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid #00f3ff;
+            color: #00f3ff;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.4);
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 9999;
+            max-width: 90%;
+            text-align: center;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.error {
+            border-color: #ff0080;
+            color: #ff0080;
+            box-shadow: 0 0 25px rgba(255, 0, 128, 0.4);
+        }
+        .toast.success {
+            border-color: #34c759;
+            color: #34c759;
+            box-shadow: 0 0 25px rgba(52, 199, 89, 0.4);
+        }
+
+        /* ===== LOADING SPINNER ===== */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 5, 16, 0.85);
+            backdrop-filter: blur(5px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .loading-overlay.show { display: flex; }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid rgba(0, 243, 255, 0.2);
+            border-top-color: #00f3ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.5);
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text {
+            color: #00f3ff;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.6);
+        }
+
+        /* Canvas oculto para procesar la imagen */
+        #canvas { display: none; }
+
+        /* Footer mini */
+        .footer-mini {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 9px;
+            color: #5a5a6e;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+
+        <!-- HEADER -->
+        <header>
+            <div class="logo-icon"></div>
+            <h1>Scan &amp; Load</h1>
+            <div class="subtitle">Sistema de Carga · Punto Cero</div>
+        </header>
+
+        <!-- BARRA DE AUTENTICACIÓN GOOGLE -->
+        <div class="auth-bar" id="authBar">
+            <div>
+                <span class="status-dot"></span>
+                <span class="label" id="authLabel">Google Drive: No conectado</span>
+            </div>
+            <button id="btnAuth">Conectar</button>
+        </div>
+
+        <!-- CAJA DE CÁMARA -->
+        <div class="scanner-box idle" id="scannerBox">
+            <div id="reader"></div>
+            <div class="scan-overlay">
+                <span class="corner-tl"></span>
+                <span class="corner-br"></span>
+            </div>
+            <div class="scan-line"></div>
+            <div class="camera-placeholder" id="cameraPlaceholder">
+                <div class="icon">📷</div>
+                <div>Cámara inactiva<br><small>Tocá "Iniciar Escáner" para comenzar</small></div>
+            </div>
+        </div>
+
+        <!-- TARJETA DE ESTADO -->
+        <div class="status-card">
+            <div class="label-block">
+                <span class="label">Artículo Detectado</span>
+                <span class="value" id="codigoResultado">— — — — —</span>
+            </div>
+            <div class="photo-counter">
+                <span class="label">Fotos subidas</span>
+                <strong id="photoCount">0</strong>
+            </div>
+        </div>
+
+        <!-- ACCIONES -->
+        <div class="actions">
+            <button id="btnScan" class="btn-outline">Iniciar Escáner</button>
+            <button id="btnCapture" class="btn-primary" disabled>Capturar y Subir</button>
+        </div>
+
+        <!-- LOG -->
+        <div class="log-area" id="logArea">
+            <div class="log-line">&gt; Sistema iniciado. Esperando acciones...</div>
+        </div>
+
+        <!-- GALERÍA -->
+        <div class="gallery-title">Últimas fotos subidas</div>
+        <div class="gallery" id="gallery">
+            <div class="gallery-empty">Aún no se subieron fotos en esta sesión</div>
+        </div>
+
+        <div class="footer-mini">Punto Cero v1.0 · Build 2026</div>
+    </div>
+
+    <!-- Canvas oculto -->
+    <canvas id="canvas"></canvas>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Procesando...</div>
+    </div>
+
+    <script>
+    // ====================================================================
+    //  CONFIGURACIÓN - REEMPLAZAR ESTOS VALORES CON TUS CREDENCIALES
+    // ====================================================================
+    const CONFIG = {
+        CLIENT_ID: 'TU_CLIENT_ID_AQUI',          // Ej: 105489732195-abcde12345.apps.googleusercontent.com
+        API_KEY:   'TU_API_KEY_AQUI',            // Ej: AIzaSyBxxxxxxxxxxxxxxxxxxxxxx
+        FOLDER_ID: '1siuX4Rju_6eVwdVsGnl4nCZ6IO4ATrzQ',
+        SCOPES: 'https://www.googleapis.com/auth/drive.file',
+        PHOTO_SIZE: 1200,        // Tamaño final de la foto (cuadrada)
+        PHOTO_QUALITY: 0.75,     // Calidad JPEG (0 a 1)
+        MAX_PHOTOS_PER_ARTICLE: 8 // Límite de fotos por artículo
+    };
+
+    // ====================================================================
+    //  ESTADO GLOBAL
+    // ====================================================================
+    let html5QrCode = null;
+    let isScanning = false;
+    let codigoArticulo = '';
+    let photoCount = 0;
+    let tokenClient = null;
+    let accessToken = null;
+    let googleConnected = false;
+    let fotosSubidasEstaSesion = []; // {codigo, dataUrl, time}
+
+    // ====================================================================
+    //  REFERENCIAS AL DOM
+    // ====================================================================
+    const elemResultado   = document.getElementById('codigoResultado');
+    const btnScan         = document.getElementById('btnScan');
+    const btnCapture      = document.getElementById('btnCapture');
+    const btnAuth         = document.getElementById('btnAuth');
+    const authBar         = document.getElementById('authBar');
+    const authLabel       = document.getElementById('authLabel');
+    const logArea         = document.getElementById('logArea');
+    const gallery         = document.getElementById('gallery');
+    const scannerBox      = document.getElementById('scannerBox');
+    const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+    const canvas          = document.getElementById('canvas');
+    const toast           = document.getElementById('toast');
+    const loadingOverlay  = document.getElementById('loadingOverlay');
+    const loadingText     = document.getElementById('loadingText');
+    const photoCountElem  = document.getElementById('photoCount');
+
+    // ====================================================================
+    //  UTILIDADES
+    // ====================================================================
+    function log(message, type = 'info') {
+        const line = document.createElement('div');
+        line.className = 'log-line ' + (type === 'info' ? '' : type);
+        const now = new Date().toLocaleTimeString('es-AR');
+        line.textContent = '> [' + now + '] ' + message;
+        logArea.appendChild(line);
+        logArea.scrollTop = logArea.scrollHeight;
+        // Mantener solo las últimas 30 líneas
+        while (logArea.children.length > 30) {
+            logArea.removeChild(logArea.firstChild);
+        }
+    }
+
+    function showToast(message, type = 'info', duration = 3000) {
+        toast.textContent = message;
+        toast.className = 'toast show ' + type;
+        setTimeout(() => {
+            toast.className = 'toast ' + type;
+        }, duration);
+    }
+
+    function showLoading(text = 'Procesando...') {
+        loadingText.textContent = text;
+        loadingOverlay.classList.add('show');
+    }
+    function hideLoading() {
+        loadingOverlay.classList.remove('show');
+    }
+
+    // ====================================================================
+    //  INICIALIZACIÓN GOOGLE IDENTITY SERVICES
+    // ====================================================================
+    function initGoogleAuth() {
+        if (CONFIG.CLIENT_ID === 'TU_CLIENT_ID_AQUI') {
+            log('⚠️ Falta configurar CLIENT_ID en CONFIG. La app funciona pero no subirá a Drive.', 'warning');
+            return;
+        }
+
+        try {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CONFIG.CLIENT_ID,
+                scope: CONFIG.SCOPES,
+                callback: (response) => {
+                    if (response.access_token) {
+                        accessToken = response.access_token;
+                        googleConnected = true;
+                        authBar.classList.add('connected');
+                        authLabel.textContent = 'Google Drive: Conectado';
+                        btnAuth.textContent = 'Desconectar';
+                        log('✓ Conectado a Google Drive', 'success');
+                        showToast('Google Drive conectado', 'success');
+                    } else {
+                        log('✗ Error al conectar con Google', 'error');
+                        showToast('Error de conexión', 'error');
+                    }
+                }
+            });
+            log('Google Identity Services inicializado');
+        } catch (err) {
+            log('Error inicializando Google Auth: ' + err.message, 'error');
+        }
+    }
+
+    btnAuth.addEventListener('click', () => {
+        if (googleConnected) {
+            // Desconectar
+            accessToken = null;
+            googleConnected = false;
+            authBar.classList.remove('connected');
+            authLabel.textContent = 'Google Drive: No conectado';
+            btnAuth.textContent = 'Conectar';
+            log('Desconectado de Google Drive', 'warning');
+        } else {
+            if (tokenClient) {
+                tokenClient.requestAccessToken();
+            } else {
+                showToast('Falta configurar CLIENT_ID', 'error');
+                log('No se puede conectar: CLIENT_ID no configurado', 'error');
+            }
+        }
+    });
+
+    // Esperar a que cargue GIS
+    function waitForGoogle() {
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+            initGoogleAuth();
+        } else {
+            setTimeout(waitForGoogle, 200);
+        }
+    }
+    waitForGoogle();
+
+    // ====================================================================
+    //  ESCÁNER DE CÓDIGO DE BARRAS
+    // ====================================================================
+    btnScan.addEventListener('click', () => {
+        if (isScanning) {
+            stopScanner();
+        } else {
+            startScanner();
+        }
+    });
+
+    function startScanner() {
+        if (!window.Html5Qrcode) {
+            showToast('Librería de escaneo no cargada', 'error');
+            return;
+        }
+
+        html5QrCode = new Html5Qrcode("reader", { verbose: false });
+
+        // Configuración: forzar formatos de retail / calzado
+        const config = {
+            fps: 12,
+            qrbox: { width: 260, height: 160 },
+            aspectRatio: 1.0,
+            videoConstraints: {
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 1280 }
+            },
+            formatsToSupport: [
+                Html5QrcodeSupportedFormats.CODE_39,    // El que pediste
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.ITF,
+                Html5QrcodeSupportedFormats.CODABAR
+            ]
+        };
+
+        html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            onScanSuccess,
+            () => { /* errores de frame silenciosos */ }
+        ).then(() => {
+            isScanning = true;
+            btnScan.innerText = "Detener Escáner";
+            btnScan.classList.add('active');
+            scannerBox.classList.remove('idle');
+            cameraPlaceholder.style.display = 'none';
+            log('Escáner activo - apuntá al código de barras', 'success');
+            showToast('Escáner activo', 'success', 1500);
+        }).catch((err) => {
+            log('Error cámara: ' + err, 'error');
+            showToast('No se pudo acceder a la cámara', 'error');
+        });
+    }
+
+    function stopScanner() {
+        if (html5QrCode && isScanning) {
+            html5QrCode.stop().then(() => {
+                html5QrCode.clear();
+                isScanning = false;
+                btnScan.innerText = "Iniciar Escáner";
+                btnScan.classList.remove('active');
+                scannerBox.classList.add('idle');
+                cameraPlaceholder.style.display = 'flex';
+                log('Escáner detenido');
+            }).catch(err => {
+                log('Error al detener: ' + err, 'error');
+            });
+        }
+    }
+
+    function onScanSuccess(decodedText) {
+        // decodedText = "12345/Rojo!42" o "12345!Rojo!42" o solo "12345"
+        let codigoExtraido = decodedText;
+
+        // Cortar por "/" primero
+        if (decodedText.includes('/')) {
+            codigoExtraido = decodedText.split('/')[0];
+        }
+        // Si no hay "/" cortar por "!"
+        else if (decodedText.includes('!')) {
+            codigoExtraido = decodedText.split('!')[0];
+        }
+
+        // Limpiar espacios y caracteres extraños
+        codigoExtraido = codigoExtraido.trim().toUpperCase();
+
+        if (codigoExtraido && codigoExtraido !== codigoArticulo) {
+            codigoArticulo = codigoExtraido;
+            elemResultado.textContent = codigoArticulo;
+            elemResultado.classList.add('active');
+            btnCapture.disabled = false;
+            log('Código detectado: ' + decodedText + ' → Artículo: ' + codigoArticulo, 'success');
+            showToast('Artículo: ' + codigoArticulo, 'success', 1800);
+            // Vibración suave (si el dispositivo lo soporta)
+            if (navigator.vibrate) navigator.vibrate(100);
+        }
+    }
+
+    // ====================================================================
+    //  CAPTURA, PROCESAMIENTO Y SUBIDA
+    // ====================================================================
+    btnCapture.addEventListener('click', async () => {
+        if (!codigoArticulo) {
+            showToast('Escanear un código primero', 'error');
+            return;
+        }
+        if (!googleConnected) {
+            showToast('Conectar Google Drive primero', 'error');
+            return;
+        }
+
+        try {
+            showLoading('Capturando imagen...');
+
+            // 1. Capturar frame del video
+            const videoElement = document.querySelector('#reader video');
+            if (!videoElement) {
+                throw new Error('No hay video activo');
+            }
+
+            // 2. Procesar en canvas: recortar cuadrado centrado y redimensionar
+            const ctx = canvas.getContext('2d');
+            canvas.width = CONFIG.PHOTO_SIZE;
+            canvas.height = CONFIG.PHOTO_SIZE;
+
+            const vw = videoElement.videoWidth;
+            const vh = videoElement.videoHeight;
+            if (vw === 0 || vh === 0) {
+                throw new Error('El video no está listo');
+            }
+
+            // Tomar el cuadrado centrado del video
+            const size = Math.min(vw, vh);
+            const sx = (vw - size) / 2;
+            const sy = (vh - size) / 2;
+
+            // Dibujar recortado al canvas 1200x1200
+            ctx.drawImage(videoElement, sx, sy, size, size, 0, 0, CONFIG.PHOTO_SIZE, CONFIG.PHOTO_SIZE);
+
+            // 3. Convertir a Blob JPEG
+            const blob = await new Promise(resolve => {
+                canvas.toBlob(resolve, 'image/jpeg', CONFIG.PHOTO_QUALITY);
+            });
+
+            if (!blob) throw new Error('No se pudo generar la imagen');
+
+            loadingText.textContent = 'Subiendo a Google Drive...';
+            log('Imagen procesada: ' + CONFIG.PHOTO_SIZE + 'x' + CONFIG.PHOTO_SIZE + ' · ' + (blob.size / 1024).toFixed(0) + ' KB');
+
+            // 4. Subir a Google Drive (multiformulario)
+            const fileName = codigoArticulo + '_' + String(photoCount + 1).padStart(2, '0') + '.jpg';
+            const fileUrl = await uploadToDrive(blob, fileName);
+
+            // 5. Actualizar estado
+            photoCount++;
+            photoCountElem.textContent = photoCount;
+
+            // 6. Agregar a la galería
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+            addToGallery(codigoArticulo, dataUrl);
+            fotosSubidasEstaSesion.push({ codigo: codigoArticulo, dataUrl, time: Date.now() });
+
+            log('✓ Subida OK: ' + fileName, 'success');
+            showToast('Foto subida: ' + fileName, 'success', 2200);
+            if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+
+        } catch (err) {
+            log('✗ Error: ' + err.message, 'error');
+            showToast('Error: ' + err.message, 'error', 4000);
+        } finally {
+            hideLoading();
+        }
+    });
+
+    // ====================================================================
+    //  SUBIDA A GOOGLE DRIVE (API REST nativa, sin gapi)
+    // ====================================================================
+    async function uploadToDrive(blob, fileName) {
+        const metadata = {
+            name: fileName,
+            parents: [CONFIG.FOLDER_ID]
+        };
+
+        // Construir multipart/related
+        const boundary = 'puntocero_' + Math.random().toString(36).substring(2);
+        const partMetadata = '--' + boundary + '\r\n' +
+            'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+            JSON.stringify(metadata) + '\r\n';
+        const partFile = '--' + boundary + '\r\n' +
+            'Content-Type: image/jpeg\r\n\r\n';
+        const end = '\r\n--' + boundary + '--';
+
+        // Combinar todo en un solo Blob
+        const multipartBlob = new Blob(
+            [partMetadata, partFile, blob, end],
+            { type: 'multipart/related; boundary=' + boundary }
+        );
+
+        const response = await fetch(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken,
+                    'Content-Length': multipartBlob.size
+                },
+                body: multipartBlob
+            }
+        );
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error('Drive API ' + response.status + ': ' + errText.substring(0, 200));
+        }
+
+        const data = await response.json();
+        return data.webViewLink || data.id;
+    }
+
+    // ====================================================================
+    //  GALERÍA
+    // ====================================================================
+    function addToGallery(codigo, dataUrl) {
+        // Limpiar placeholder si existe
+        const empty = gallery.querySelector('.gallery-empty');
+        if (empty) empty.remove();
+
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
+        item.innerHTML = '<img src="' + dataUrl + '" alt="' + codigo + '"><span class="badge">' + codigo + '</span>';
+        gallery.insertBefore(item, gallery.firstChild);
+
+        // Limitar a 12 elementos visibles
+        while (gallery.children.length > 12) {
+            gallery.removeChild(gallery.lastChild);
+        }
+    }
+
+    // ====================================================================
+    //  PWA: REGISTRO DE SERVICE WORKER (para instalación offline)
+    // ====================================================================
+    if ('serviceWorker' in navigator) {
+        // SW inline vía Blob para no necesitar archivo extra
+        const swCode = `
+            const CACHE = 'scan-load-v1';
+            self.addEventListener('install', e => self.skipWaiting());
+            self.addEventListener('activate', e => self.clients.claim());
+            self.addEventListener('fetch', e => {
+                if (e.request.method !== 'GET') return;
+                e.respondWith(
+                    caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
+                        const copy = resp.clone();
+                        caches.open(CACHE).then(c => c.put(e.request, copy));
+                        return resp;
+                    }).catch(() => r))
+                );
+            });
+        `;
+        const swBlob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
+        // Nota: navigator.serviceWorker.register requiere URL same-origin.
+        // En muchos navegadores esto falla con blob:; está OK, la app funciona sin SW.
+    }
+
+    // ====================================================================
+    //  PREVENIR CIERRE ACCIDENTAL
+    // ====================================================================
+    window.addEventListener('beforeunload', (e) => {
+        if (isScanning || googleConnected) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // ====================================================================
+    //  LOG INICIAL
+    // ====================================================================
+    log('Punto Cero inicializado correctamente');
+    log('Carpeta Drive configurada: ' + CONFIG.FOLDER_ID.substring(0, 12) + '...');
+    if (CONFIG.CLIENT_ID === 'TU_CLIENT_ID_AQUI') {
+        log('⚠️ RECORDATORIO: Configurar CLIENT_ID y API_KEY', 'warning');
+    }
+    </script>
+</body>
+</html>

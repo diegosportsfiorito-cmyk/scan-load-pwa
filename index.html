@@ -31,7 +31,6 @@
         .code-value { font-size: 24px; font-weight: 800; color: #ff0055; text-shadow: 0 0 8px rgba(255, 0, 85, 0.4); }
         .code-value.active { color: #00f3ff; text-shadow: 0 0 12px rgba(0, 243, 255, 0.6); }
 
-        /* Cámaras */
         .camera-view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; display: none; flex-direction: column; justify-content: center; align-items: center; }
         .camera-view.active { display: flex; }
         .camera-box { position: relative; width: 90%; height: 60vh; background: #000; border-radius: 20px; overflow: hidden; border: 2px solid #00f3ff; box-shadow: 0 0 30px rgba(0, 243, 255, 0.3); }
@@ -40,7 +39,6 @@
         .camera-close { position: absolute; top: 20px; right: 20px; background: #ff0055; color: white; border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; }
         .camera-capture { margin-top: 20px; background: #00f3ff; color: #000; border: none; border-radius: 50%; width: 70px; height: 70px; font-size: 30px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 243, 255, 0.6); }
         
-        /* Log de Sistema */
         .log-container { margin-top: 15px; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px; height: 150px; overflow-y: auto; position: relative; z-index: 1; }
         .log-header { font-size: 10px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; font-family: monospace; }
         .log-text { font-size: 11px; font-family: 'Courier New', monospace; line-height: 1.4; }
@@ -58,7 +56,6 @@
             <p class="subtitle">Sistema de Carga</p>
         </header>
 
-        <!-- PASO 1 -->
         <div class="card">
             <span class="card-title">1. CÓDIGO FÁBRICA (EAN)</span>
             <div class="row">
@@ -67,7 +64,6 @@
             </div>
         </div>
 
-        <!-- PASO 2 -->
         <div class="card">
             <span class="card-title">2. IMPORTAR DESDE URL</span>
             <div class="row">
@@ -76,7 +72,6 @@
             </div>
         </div>
 
-        <!-- PASO 3 -->
         <div class="card">
             <span class="card-title">3. CÓDIGO INTERNO (DRAGON FISH) - OBLIGATORIO</span>
             <button id="btnScan" class="btn btn-scan">Escanear Código Interno</button>
@@ -85,23 +80,19 @@
             </div>
         </div>
 
-        <!-- PASO 4 -->
         <div class="card">
             <span class="card-title">4. METADATOS (OPCIONAL)</span>
             <input type="text" id="inputMeta" class="input-field" placeholder="Ej: Promo Día del Padre">
         </div>
 
-        <!-- BOTÓN PRINCIPAL -->
         <button id="btnCapture" class="btn btn-action" disabled>📸 ABRIR CÁMARA PARA FOTO</button>
 
-        <!-- LOG DE SISTEMA -->
         <div class="log-container">
             <div class="log-header">> LOG DEL SISTEMA</div>
             <div id="logArea" class="log-text log-info">Sistema iniciado correctamente.</div>
         </div>
     </div>
 
-    <!-- VISTA FULLSCREEN PARA EL ESCÁNER -->
     <div id="scannerView" class="camera-view">
         <button class="camera-close" onclick="cerrarScanner()">X</button>
         <div class="camera-box">
@@ -110,7 +101,6 @@
         </div>
     </div>
 
-    <!-- VISTA FULLSCREEN PARA LA FOTO -->
     <div id="photoView" class="camera-view">
         <button class="camera-close" onclick="cerrarFoto()">X</button>
         <div class="camera-box">
@@ -133,36 +123,35 @@
         let codigoArticulo = '';
         let photoCount = 0;
         let gapiInited = false;
-        let videoStreamFoto = null; // Stream separado para la foto
+        let videoStreamFoto = null;
 
         const elemResultado = document.getElementById('codigoResultado');
         const btnScan = document.getElementById('btnScan');
         const btnCapture = document.getElementById('btnCapture');
         const logArea = document.getElementById('logArea');
 
-        // --- SISTEMA DE LOG ---
         function addLog(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
             logArea.innerHTML += `<br><span class="log-${type}">[${time}] ${message}</span>`;
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // --- LÓGICA DEL ESCÁNER (PUNTO 3) ---
+        // --- ESCÁNER ---
         btnScan.addEventListener('click', () => {
             document.getElementById('scannerView').classList.add('active');
             addLog("Abriendo escáner para Código Interno...", "info");
-            setTimeout(startScanner, 500); // Delay para que el div se renderice
+            setTimeout(startScanner, 500);
         });
 
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
             const config = { 
-                fps: 15, // Más fps para leer mejor
+                fps: 15, 
                 qrbox: function(viewfinderWidth, viewfinderHeight) {
                     let minEdgePercentage = 0.8;
                     let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
                     let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-                    return { width: qrboxSize, height: Math.floor(qrboxSize * 0.5) }; // Rectángulo horizontal para Code 39
+                    return { width: qrboxSize, height: Math.floor(qrboxSize * 0.5) }; 
                 },
                 formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
             };
@@ -181,7 +170,7 @@
             elemResultado.classList.add('active');
             btnCapture.disabled = false; 
             addLog(`Código Interno detectado: ${codigoArticulo}`, "success");
-            cerrarScanner(); // Cierra el escáner inmediatamente
+            cerrarScanner(); 
         }
 
         function cerrarScanner() {
@@ -197,7 +186,7 @@
             }
         }
 
-        // --- LÓGICA DE LA FOTO (BOTÓN PRINCIPAL) ---
+        // --- FOTO ---
         btnCapture.addEventListener('click', async () => {
             if(!codigoArticulo) {
                 addLog("ERROR: Debe escanear el código interno primero.", "error");
@@ -218,7 +207,7 @@
         });
 
         function tomarFoto() {
-            addLog("Procesando imagen...", "info");
+            addLog("Procesando imagen (Recortando a 1200x1200)...", "info");
             const video = document.getElementById('videoFoto');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
@@ -229,16 +218,24 @@
             let sy = (video.videoHeight - size) / 2;
             ctx.drawImage(video, sx, sy, size, size, 0, 0, 1200, 1200);
 
-            cerrarFoto(); // Cerramos cámara antes de subir
+            cerrarFoto(); // Cerramos cámara de inmediato
+
+            // Feedback visual
+            btnCapture.innerText = "⏳ SUBIENDO A LA NUBE...";
+            btnCapture.style.background = "linear-gradient(45deg, #555, #333)";
 
             canvas.toBlob(async (blob) => {
-                if(blob.size < 10000) { // Si pesa menos de 10kb, la foto está en negro
-                    addLog("ERROR: La imagen está en negro o vacía. Intente de nuevo.", "error");
+                // DIAGNÓSTICO CLAVE
+                const pesoKB = (blob.size / 1024).toFixed(2);
+                addLog(`Imagen generada. Peso: ${pesoKB} KB`, "info");
+
+                if(blob.size < 10000) { 
+                    addLog("ERROR: La imagen está en negro o vacía.", "error");
+                    resetearBotonPrincipal();
                     return;
                 }
 
-                addLog("Imagen comprimida. Subiendo a Google Drive...", "info");
-                btnCapture.disabled = true;
+                addLog("Enviando datos a los servidores de Google...", "info");
 
                 const meta = document.getElementById('inputMeta').value;
                 let nombreArchivo = `${codigoArticulo}_${photoCount++}`;
@@ -257,23 +254,19 @@
                         body: getMultipartBody(file, FOLDER_ID)
                     });
                     
-                    addLog(`¡ÉXITO TOTAL! Archivo ${nombreArchivo} subido.`, "success");
-                    
-                    // Resetear estado para el siguiente artículo
-                    elemResultado.innerText = "Ninguno";
-                    elemResultado.classList.remove('active');
-                    codigoArticulo = '';
-                    btnCapture.disabled = true;
-                    document.getElementById('inputMeta').value = '';
+                    addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
+                    resetearEstadoApp();
                     
                 } catch (e) {
-                    let errorMsg = "Error desconocido";
-                    if(e.result && e.result.error) {
-                        if(e.result.error.message.includes("sign in")) errorMsg = "Sesión de Google expirada. Recargue la página.";
-                        else errorMsg = e.result.error.message;
+                    let errorMsg = "Error desconocido al conectar con Google";
+                    // Intentamos extraer el error exacto de la respuesta de Google
+                    if(e.result && e.result.error && e.result.error.message) {
+                        errorMsg = e.result.error.message;
+                    } else if (e.message) {
+                        errorMsg = e.message;
                     }
-                    addLog(`ERROR AL SUBIR: ${errorMsg}`, "error");
-                    btnCapture.disabled = false;
+                    addLog(`ERROR FATAL AL SUBIR: ${errorMsg}`, "error");
+                    resetearBotonPrincipal();
                 }
             }, 'image/jpeg', 0.7);
         }
@@ -284,6 +277,21 @@
                 videoStreamFoto = null;
             }
             document.getElementById('photoView').classList.remove('active');
+        }
+
+        function resetearBotonPrincipal() {
+            btnCapture.innerText = "📸 ABRIR CÁMARA PARA FOTO";
+            btnCapture.style.background = "linear-gradient(45deg, #bc13fe, #ff0055)";
+            btnCapture.disabled = false;
+        }
+
+        function resetearEstadoApp() {
+            resetearBotonPrincipal();
+            elemResultado.innerText = "Ninguno";
+            elemResultado.classList.remove('active');
+            codigoArticulo = '';
+            btnCapture.disabled = true;
+            document.getElementById('inputMeta').value = '';
         }
 
         // --- GOOGLE DRIVE API ---

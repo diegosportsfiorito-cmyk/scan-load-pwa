@@ -146,17 +146,17 @@
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // --- NUEVO: SINTETIZADOR DE VOZ ---
+        // --- SINTETIZADOR DE VOZ ---
         function hablar(texto) {
             if ('speechSynthesis' in window) {
                 const mensaje = new SpeechSynthesisUtterance(texto);
                 mensaje.lang = 'es-ES';
-                mensaje.rate = 0.9; // Un poco más lento para que se entienda
+                mensaje.rate = 0.9; 
                 window.speechSynthesis.speak(mensaje);
             }
         }
 
-        // --- NUEVO: CONTROL DE LINTERNA ---
+        // --- CONTROL DE LINTERNA ---
         async function toggleFlash() {
             if (!currentVideoTrack) return addLog("Cámara no lista para linterna.", "error");
             
@@ -186,7 +186,7 @@
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
             const config = { 
-                fps: 15, // Mantenemos fps alto para detección rápida
+                fps: 15, 
                 qrbox: function(vw, vh) { let s = Math.min(vw, vh) * 0.8; return { width: Math.floor(s), height: Math.floor(s * 0.5) }; },
                 formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
             };
@@ -194,9 +194,8 @@
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => {
                 addLog("Escáner activo. Apuntando...", "info");
-                scannerBoxContainer.classList.add('scanning-active'); // Animación visual
+                scannerBoxContainer.classList.add('scanning-active'); 
                 
-                // NUEVO: Capturamos el video track DESPUÉS de que la librería lo inicie para no romperla
                 setTimeout(() => {
                     const videoElem = document.querySelector('#reader video');
                     if (videoElem && videoElem.srcObject) {
@@ -216,7 +215,6 @@
             elemResultado.classList.add('active');
             btnCapture.disabled = false; 
             
-            // NUEVO: Lee el código en voz alta
             hablar("Código detectado: " + codigoArticulo.replace(/-/g, ' guion '));
             
             addLog(`Código: ${codigoArticulo}`, "success");
@@ -224,19 +222,18 @@
         }
 
         function cerrarScanner() {
-            // Apagamos linterna al salir
             if (currentVideoTrack && currentVideoTrack.getSettings().torch) {
                 currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(()=>{});
                 btnFlash.classList.remove('on');
             }
             currentVideoTrack = null;
-            scannerBoxContainer.classList.remove('scanning-active'); // Quitamos animación
+            scannerBoxContainer.classList.remove('scanning-active'); 
 
             if (html5QrCode) html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
             else document.getElementById('scannerView').classList.remove('active');
         }
 
-        // --- FOTO (SIN TOCAR, FUNCIONA PERFECTO) ---
+        // --- FOTO ---
         btnCapture.addEventListener('click', async () => {
             if(!codigoArticulo) return addLog("ERROR: Escanee el código primero.", "error");
             document.getElementById('photoView').classList.add('active');
@@ -281,7 +278,17 @@
                             body: JSON.stringify({ fileName: nombreArchivo, folderId: FOLDER_ID, fileData: base64data })
                         });
 
-                        const result = await response.json();
+                        // Leemos como texto primero para evitar que explote si es una página HTML
+                        const textoRespuesta = await response.text();
+                        let result;
+
+                        try {
+                            result = JSON.parse(textoRespuesta); // Intentamos convertirlo
+                        } catch (errorJSON) {
+                            // Si falla, es porque Google devolvió una página de "Iniciar Sesión"
+                            console.error("Respuesta inválida de Google:", textoRespuesta.substring(0, 100));
+                            throw new Error("Sesión expirada. Se abrió una ventana para autorizar de nuevo.");
+                        }
                         
                         if(result.status === "success") {
                             addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
@@ -290,7 +297,13 @@
                             throw new Error(result.message || "Error en el proxy");
                         }
                     } catch (e) {
-                        addLog(`ERROR DE RED: ${e.message}`, "error");
+                        // Si fue error de sesión, abrimos Google para que renueve el permiso
+                        if(e.message.includes("Sesión expirada")) {
+                            window.open(APPS_SCRIPT_URL, '_blank');
+                            addLog("VENTANA ABIERTA: Aceptá el permiso y volvé a tomar la foto.", "error");
+                        } else {
+                            addLog(`ERROR DE RED: ${e.message}`, "error");
+                        }
                         resetearBotonPrincipal();
                     }
                 };

@@ -138,7 +138,7 @@
         // --- ESCÁNER ---
         btnScan.addEventListener('click', () => {
             document.getElementById('scannerView').classList.add('active');
-            addLog("Abriendo escáner para Código Interno...", "info");
+            addLog("Abriendo escáner...", "info");
             setTimeout(startScanner, 500);
         });
 
@@ -146,21 +146,16 @@
             html5QrCode = new Html5Qrcode("reader");
             const config = { 
                 fps: 15, 
-                qrbox: function(viewfinderWidth, viewfinderHeight) {
-                    let minEdgePercentage = 0.8;
-                    let minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
-                    let qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
-                    return { width: qrboxSize, height: Math.floor(qrboxSize * 0.5) }; 
+                qrbox: function(vw, vh) {
+                    let s = Math.min(vw, vh) * 0.8;
+                    return { width: Math.floor(s), height: Math.floor(s * 0.5) }; 
                 },
                 formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
             };
             
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-            .then(() => addLog("Escáner activo. Apunte al código.", "info"))
-            .catch(err => {
-                addLog("ERROR al abrir cámara: " + err, "error");
-                cerrarScanner();
-            });
+            .then(() => addLog("Escáner activo.", "info"))
+            .catch(err => { addLog("ERROR cámara: " + err, "error"); cerrarScanner(); });
         }
 
         function onScanSuccess(decodedText) {
@@ -168,72 +163,41 @@
             elemResultado.innerText = codigoArticulo; 
             elemResultado.classList.add('active');
             btnCapture.disabled = false; 
-            addLog(`Código Interno detectado: ${codigoArticulo}`, "success");
+            addLog(`Código: ${codigoArticulo}`, "success");
             cerrarScanner(); 
         }
 
         function cerrarScanner() {
             if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    html5QrCode.clear();
-                    document.getElementById('scannerView').classList.remove('active');
-                }).catch(err => {
-                    document.getElementById('scannerView').classList.remove('active');
-                });
-            } else {
-                document.getElementById('scannerView').classList.remove('active');
-            }
+                html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
+            } else { document.getElementById('scannerView').classList.remove('active'); }
         }
 
         // --- FOTO ---
         btnCapture.addEventListener('click', async () => {
-            if(!codigoArticulo) {
-                addLog("ERROR: Debe escanear el código interno primero.", "error");
-                return;
-            }
+            if(!codigoArticulo) return addLog("ERROR: Escanee el código primero.", "error");
             document.getElementById('photoView').classList.add('active');
-            addLog("Abriendo cámara para tomar foto...", "info");
-            
+            addLog("Abriendo cámara de foto...", "info");
             try {
-                videoStreamFoto = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
-                });
+                videoStreamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
                 document.getElementById('videoFoto').srcObject = videoStreamFoto;
-            } catch (err) {
-                addLog("ERROR: No se pudo acceder a la cámara de foto.", "error");
-                cerrarFoto();
-            }
+            } catch (err) { addLog("ERROR: No hay cámara.", "error"); cerrarFoto(); }
         });
 
         function tomarFoto() {
-            addLog("Procesando imagen...", "info");
             const video = document.getElementById('videoFoto');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
-            
             canvas.width = 1200; canvas.height = 1200;
             let size = Math.min(video.videoWidth, video.videoHeight);
-            let sx = (video.videoWidth - size) / 2;
-            let sy = (video.videoHeight - size) / 2;
-            ctx.drawImage(video, sx, sy, size, size, 0, 0, 1200, 1200);
+            ctx.drawImage(video, (video.videoWidth - size)/2, (video.videoHeight - size)/2, size, size, 0, 0, 1200, 1200);
 
             btnCapture.innerText = "⏳ COMPRIMIENDO...";
             btnCapture.style.background = "linear-gradient(45deg, #555, #333)";
 
             canvas.toBlob(async (blob) => {
-                cerrarFoto(); // Cerramos después de comprimir
-
-                const pesoKB = (blob.size / 1024).toFixed(2);
-                addLog(`Imagen lista. Peso: ${pesoKB} KB`, "info");
-
-                if(blob.size < 10000) { 
-                    addLog("ERROR: La imagen está en negro o vacía.", "error");
-                    resetearBotonPrincipal();
-                    return;
-                }
-
-                btnCapture.innerText = "⏳ SUBIENDO A DRIVE...";
-                addLog("Enviando paquete binario a Google...", "info");
+                cerrarFoto();
+                addLog(`Imagen lista (${(blob.size/1024).toFixed(2)} KB). Iniciando subida reanudable...`, "info");
 
                 const meta = document.getElementById('inputMeta').value;
                 let nombreArchivo = `${codigoArticulo}_${photoCount++}`;
@@ -243,29 +207,56 @@
                 try {
                     if(!gapiInited) await waitForGapi();
                     
-                    // --- MÉTODO OFICIAL DE GOOGLE PARA SUBIR ARCHIVOS ---
-                    // Al cargar el discovery doc, se crea gapi.client.drive.files
-                    gapi.client.drive.files.create({
-                        resource: {
-                            name: nombreArchivo,
-                            parents: [FOLDER_ID]
+                    // --- EL SECRETO: SUBIDA REANUDABLE (RESUMABLE UPLOAD) ---
+                    // PASO 1: Pedirle a Google una "URL de Sesión"
+                    const token = gapi.client.getToken().access_token;
+                    const initResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Content-Type': 'application/json'
                         },
-                        media: {
-                            mimeType: 'image/jpeg',
-                            body: blob // El blob crudo de la imagen
-                        }
-                    }).then((response) => {
-                        // Si llega aquí, fue un éxito absoluto
-                        addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
-                        resetearEstadoApp();
-                    }).catch((err) => {
-                        // Si falla, mostramos el error real de Google
-                        let errorMsg = "Error desconocido";
-                        if(err.result && err.result.error) errorMsg = err.result.error.message;
-                        else if(err.message) errorMsg = err.message;
-                        addLog(`ERROR DE GOOGLE: ${errorMsg}`, "error");
-                        resetearBotonPrincipal();
+                        body: JSON.stringify({ name: nombreArchivo, parents: [FOLDER_ID] })
                     });
+
+                    if (!initResponse.ok) throw new Error("Permiso denegado al iniciar sesión de subida");
+                    
+                    // Extraemos la URL que nos dio Google
+                    const sessionUrl = initResponse.headers.get('Location');
+                    addLog("Sesión creada. Enviando bytes...", "info");
+
+                    // PASO 2: Subir la foto real usando XHR (para poder mostrar el porcentaje)
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('PUT', sessionUrl, true);
+                        // El tipo de contenido va en el header para la subida reanudable
+                        xhr.setRequestHeader('Content-Type', 'image/jpeg'); 
+
+                        // --- AQUÍ ESTÁ LA MAGIA DEL PORCENTAJE ---
+                        xhr.upload.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                const percent = Math.round((e.loaded / e.total) * 100);
+                                btnCapture.innerText = `⏳ SUBIENDO... ${percent}%`;
+                                if(percent % 25 === 0) addLog(`Progreso: ${percent}%`, "info");
+                            }
+                        };
+
+                        xhr.onload = () => {
+                            if (xhr.status === 200 || xhr.status === 201) {
+                                resolve(); // Éxito
+                            } else {
+                                reject(new Error(`Error HTTP al subir: ${xhr.status}`));
+                            }
+                        };
+
+                        xhr.onerror = () => reject(new Error("Error de red fuerte al subir"));
+                        
+                        // Enviamos el blob binario
+                        xhr.send(blob); 
+                    });
+
+                    addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
+                    resetearEstadoApp();
                     
                 } catch (e) {
                     addLog(`ERROR FATAL: ${e.message}`, "error");
@@ -275,10 +266,7 @@
         }
 
         function cerrarFoto() {
-            if (videoStreamFoto) {
-                videoStreamFoto.getTracks().forEach(track => track.stop());
-                videoStreamFoto = null;
-            }
+            if (videoStreamFoto) { videoStreamFoto.getTracks().forEach(track => track.stop()); videoStreamFoto = null; }
             document.getElementById('photoView').classList.remove('active');
         }
 
@@ -298,33 +286,16 @@
         }
 
         // --- GOOGLE DRIVE API ---
-        function gapiLoaded() { 
-            gapi.load('client', initializeGapiClient); 
-        }
-        
+        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
         async function initializeGapiClient() {
             try {
-                await gapi.client.init({ 
-                    apiKey: API_KEY, 
-                    clientId: CLIENT_ID, 
-                    // Este discovery doc crea automáticamente gapi.client.drive.files
-                    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"], 
-                    scope: 'https://www.googleapis.com/auth/drive.file' 
-                });
+                await gapi.client.init({ apiKey: API_KEY, clientId: CLIENT_ID, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"], scope: 'https://www.googleapis.com/auth/drive.file' });
                 gapiInited = true;
-                addLog("API de Drive inicializada correctamente.", "success");
-            } catch (e) {
-                addLog("ERROR FATAL: No se pudo conectar con Google.", "error");
-            }
+                addLog("API de Drive lista.", "success");
+            } catch (e) { addLog("ERROR FATAL: Google no conectó.", "error"); }
         }
         
-        function waitForGapi() { 
-            return new Promise(resolve => { 
-                let i = setInterval(() => { 
-                    if (gapiInited) { clearInterval(i); resolve(); } 
-                }, 100); 
-            }); 
-        }
+        function waitForGapi() { return new Promise(resolve => { let i = setInterval(() => { if (gapiInited) { clearInterval(i); resolve(); } }, 100); }); }
     </script>
 </body>
 </html>

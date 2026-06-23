@@ -134,14 +134,8 @@
         const btnCapture = document.getElementById('btnCapture');
         const logArea = document.getElementById('logArea');
 
-        // NUEVA FUNCIÓN: COPIAR LOG
         function copiarLog() {
-            const textoLog = logArea.innerText;
-            navigator.clipboard.writeText(textoLog).then(() => {
-                addLog("Log copiado al portapapeles.", "success");
-            }).catch(err => {
-                addLog("Error al copiar: " + err, "error");
-            });
+            navigator.clipboard.writeText(logArea.innerText).then(() => addLog("Log copiado.", "success"));
         }
 
         function addLog(message, type = 'info') {
@@ -161,13 +155,9 @@
             html5QrCode = new Html5Qrcode("reader");
             const config = { 
                 fps: 15, 
-                qrbox: function(vw, vh) {
-                    let s = Math.min(vw, vh) * 0.8;
-                    return { width: Math.floor(s), height: Math.floor(s * 0.5) }; 
-                },
+                qrbox: function(vw, vh) { let s = Math.min(vw, vh) * 0.8; return { width: Math.floor(s), height: Math.floor(s * 0.5) }; },
                 formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
             };
-            
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => addLog("Escáner activo.", "info"))
             .catch(err => { addLog("ERROR cámara: " + err, "error"); cerrarScanner(); });
@@ -175,17 +165,14 @@
 
         function onScanSuccess(decodedText) {
             codigoArticulo = decodedText.split('/')[0].trim(); 
-            elemResultado.innerText = codigoArticulo; 
-            elemResultado.classList.add('active');
-            btnCapture.disabled = false; 
-            addLog(`Código: ${codigoArticulo}`, "success");
+            elemResultado.innerText = codigoArticulo; elemResultado.classList.add('active');
+            btnCapture.disabled = false; addLog(`Código: ${codigoArticulo}`, "success");
             cerrarScanner(); 
         }
 
         function cerrarScanner() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
-            } else { document.getElementById('scannerView').classList.remove('active'); }
+            if (html5QrCode) html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
+            else document.getElementById('scannerView').classList.remove('active');
         }
 
         // --- FOTO ---
@@ -212,7 +199,7 @@
 
             canvas.toBlob(async (blob) => {
                 cerrarFoto();
-                addLog(`Imagen lista (${(blob.size/1024).toFixed(2)} KB). Iniciando sesión de subida...`, "info");
+                addLog(`Imagen lista (${(blob.size/1024).toFixed(2)} KB). Pidiendo URL a Google...`, "info");
 
                 const meta = document.getElementById('inputMeta').value;
                 let nombreArchivo = `${codigoArticulo}_${photoCount++}`;
@@ -221,46 +208,47 @@
                 
                 try {
                     if(!gapiInited) await waitForGapi();
-                    
                     const token = gapi.client.getToken().access_token;
                     
-                    // SEGURIDAD: Si se cuelga, explota a los 15 segundos en vez de quedarse mudo
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-                    let initResponse;
-                    try {
-                        initResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': 'Bearer ' + token,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ name: nombreArchivo, parents: [FOLDER_ID] }),
-                            signal: controller.signal
-                        });
-                    } catch (fetchError) {
-                        clearTimeout(timeoutId);
-                        throw new Error("Tiempo agotado o bloqueado por CORS al conectar con Google. Detalle: " + fetchError.message);
-                    }
-                    clearTimeout(timeoutId);
-
-                    if (!initResponse.ok) {
-                        const errorData = await initResponse.json();
-                        throw new Error("Google rechazó la sesión: " + (errorData.error.message || initResponse.status));
-                    }
-                    
-                    const sessionUrl = initResponse.headers.get('Location');
-                    if(!sessionUrl) throw new Error("Error crítico: Google no devolvió la URL de sesión (puede ser un bug de CORS del navegador).");
-                    
-                    addLog("Sesión creada. Enviando bytes...", "info");
-
-                    await new Promise((resolve, reject) => {
+                    // --- PASO 1: PEDIR URL DE SESIÓN USANDO XHR (A prueba de bloqueos) ---
+                    const sessionUrl = await new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest();
-                        xhr.open('PUT', sessionUrl, true);
-                        xhr.setRequestHeader('Content-Type', 'image/jpeg'); 
+                        xhr.open('POST', 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', true);
+                        xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                        xhr.setRequestHeader('Content-Type', 'application/json');
+                        xhr.timeout = 15000; // Tiempo límite de 15 segundos nativo
+                        
+                        xhr.onload = function() {
+                            if (xhr.status === 200) {
+                                const location = xhr.getResponseHeader('Location');
+                                if (location) resolve(location);
+                                else reject(new Error("Google no devolvió la cabecera Location."));
+                            } else {
+                                reject(new Error("Google respondió con error: " + xhr.status));
+                            }
+                        };
+                        
+                        xhr.ontimeout = function() {
+                            reject(new Error("BLOQUEO DE RED: El navegador no pudo llegar a Google en 15s. ¿Está en HTTP y no en HTTPS?"));
+                        };
+                        
+                        xhr.onerror = function() {
+                            reject(new Error("ERROR CORS O RED: El navegador bloqueó la conexión directa con Google."));
+                        };
+                        
+                        xhr.send(JSON.stringify({ name: nombreArchivo, parents: [FOLDER_ID] }));
+                    });
 
-                        xhr.upload.onprogress = (e) => {
+                    addLog("URL obtenida. Subiendo bytes...", "info");
+                    btnCapture.innerText = "⏳ SUBIENDO... 0%";
+
+                    // --- PASO 2: SUBIR LA FOTO USANDO XHR ---
+                    await new Promise((resolve, reject) => {
+                        const xhr2 = new XMLHttpRequest();
+                        xhr2.open('PUT', sessionUrl, true);
+                        xhr2.setRequestHeader('Content-Type', 'image/jpeg'); 
+
+                        xhr2.upload.onprogress = (e) => {
                             if (e.lengthComputable) {
                                 const percent = Math.round((e.loaded / e.total) * 100);
                                 btnCapture.innerText = `⏳ SUBIENDO... ${percent}%`;
@@ -268,14 +256,15 @@
                             }
                         };
 
-                        xhr.onload = () => {
-                            if (xhr.status === 200 || xhr.status === 201) resolve();
-                            else reject(new Error(`Error HTTP al subir bytes: ${xhr.status}`));
+                        xhr2.onload = () => {
+                            if (xhr2.status === 200 || xhr2.status === 201) resolve();
+                            else reject(new Error(`Error al subir bytes: ${xhr2.status}`));
                         };
 
-                        xhr.onerror = () => reject(new Error("Error de red fuerte al subir la foto"));
+                        xhr2.ontimeout = function() { reject(new Error("La subida se cortó por tiempo de espera.")); };
+                        xhr2.onerror = function() { reject(new Error("Error de red fuerte al subir la foto.")); };
                         
-                        xhr.send(blob); 
+                        xhr2.send(blob); 
                     });
 
                     addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
@@ -301,10 +290,8 @@
 
         function resetearEstadoApp() {
             resetearBotonPrincipal();
-            elemResultado.innerText = "Ninguno";
-            elemResultado.classList.remove('active');
-            codigoArticulo = '';
-            btnCapture.disabled = true;
+            elemResultado.innerText = "Ninguno"; elemResultado.classList.remove('active');
+            codigoArticulo = ''; btnCapture.disabled = true;
             document.getElementById('inputMeta').value = '';
         }
 

@@ -40,7 +40,9 @@
         .camera-capture { margin-top: 20px; background: #00f3ff; color: #000; border: none; border-radius: 50%; width: 70px; height: 70px; font-size: 30px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 243, 255, 0.6); }
         
         .log-container { margin-top: 15px; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px; height: 150px; overflow-y: auto; position: relative; z-index: 1; }
-        .log-header { font-size: 10px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; font-family: monospace; }
+        .log-header { font-size: 10px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; font-family: monospace; display: flex; justify-content: space-between; align-items: center; }
+        .btn-copy-log { background: transparent; color: #00f3ff; border: 1px solid #333; padding: 2px 8px; border-radius: 4px; font-size: 9px; cursor: pointer; text-transform: uppercase; }
+        .btn-copy-log:active { background: #333; }
         .log-text { font-size: 11px; font-family: 'Courier New', monospace; line-height: 1.4; }
         .log-info { color: #00f3ff; }
         .log-success { color: #00ff00; }
@@ -88,7 +90,10 @@
         <button id="btnCapture" class="btn btn-action" disabled>📸 ABRIR CÁMARA PARA FOTO</button>
 
         <div class="log-container">
-            <div class="log-header">> LOG DEL SISTEMA</div>
+            <div class="log-header">
+                <span>> LOG DEL SISTEMA</span>
+                <button class="btn-copy-log" onclick="copiarLog()">Copiar Log</button>
+            </div>
             <div id="logArea" class="log-text log-info">Sistema iniciado correctamente.</div>
         </div>
     </div>
@@ -128,6 +133,16 @@
         const btnScan = document.getElementById('btnScan');
         const btnCapture = document.getElementById('btnCapture');
         const logArea = document.getElementById('logArea');
+
+        // NUEVA FUNCIÓN: COPIAR LOG
+        function copiarLog() {
+            const textoLog = logArea.innerText;
+            navigator.clipboard.writeText(textoLog).then(() => {
+                addLog("Log copiado al portapapeles.", "success");
+            }).catch(err => {
+                addLog("Error al copiar: " + err, "error");
+            });
+        }
 
         function addLog(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
@@ -197,7 +212,7 @@
 
             canvas.toBlob(async (blob) => {
                 cerrarFoto();
-                addLog(`Imagen lista (${(blob.size/1024).toFixed(2)} KB). Iniciando subida reanudable...`, "info");
+                addLog(`Imagen lista (${(blob.size/1024).toFixed(2)} KB). Iniciando sesión de subida...`, "info");
 
                 const meta = document.getElementById('inputMeta').value;
                 let nombreArchivo = `${codigoArticulo}_${photoCount++}`;
@@ -207,32 +222,44 @@
                 try {
                     if(!gapiInited) await waitForGapi();
                     
-                    // --- EL SECRETO: SUBIDA REANUDABLE (RESUMABLE UPLOAD) ---
-                    // PASO 1: Pedirle a Google una "URL de Sesión"
                     const token = gapi.client.getToken().access_token;
-                    const initResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': 'Bearer ' + token,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ name: nombreArchivo, parents: [FOLDER_ID] })
-                    });
-
-                    if (!initResponse.ok) throw new Error("Permiso denegado al iniciar sesión de subida");
                     
-                    // Extraemos la URL que nos dio Google
+                    // SEGURIDAD: Si se cuelga, explota a los 15 segundos en vez de quedarse mudo
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+                    let initResponse;
+                    try {
+                        initResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': 'Bearer ' + token,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ name: nombreArchivo, parents: [FOLDER_ID] }),
+                            signal: controller.signal
+                        });
+                    } catch (fetchError) {
+                        clearTimeout(timeoutId);
+                        throw new Error("Tiempo agotado o bloqueado por CORS al conectar con Google. Detalle: " + fetchError.message);
+                    }
+                    clearTimeout(timeoutId);
+
+                    if (!initResponse.ok) {
+                        const errorData = await initResponse.json();
+                        throw new Error("Google rechazó la sesión: " + (errorData.error.message || initResponse.status));
+                    }
+                    
                     const sessionUrl = initResponse.headers.get('Location');
+                    if(!sessionUrl) throw new Error("Error crítico: Google no devolvió la URL de sesión (puede ser un bug de CORS del navegador).");
+                    
                     addLog("Sesión creada. Enviando bytes...", "info");
 
-                    // PASO 2: Subir la foto real usando XHR (para poder mostrar el porcentaje)
                     await new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest();
                         xhr.open('PUT', sessionUrl, true);
-                        // El tipo de contenido va en el header para la subida reanudable
                         xhr.setRequestHeader('Content-Type', 'image/jpeg'); 
 
-                        // --- AQUÍ ESTÁ LA MAGIA DEL PORCENTAJE ---
                         xhr.upload.onprogress = (e) => {
                             if (e.lengthComputable) {
                                 const percent = Math.round((e.loaded / e.total) * 100);
@@ -242,16 +269,12 @@
                         };
 
                         xhr.onload = () => {
-                            if (xhr.status === 200 || xhr.status === 201) {
-                                resolve(); // Éxito
-                            } else {
-                                reject(new Error(`Error HTTP al subir: ${xhr.status}`));
-                            }
+                            if (xhr.status === 200 || xhr.status === 201) resolve();
+                            else reject(new Error(`Error HTTP al subir bytes: ${xhr.status}`));
                         };
 
-                        xhr.onerror = () => reject(new Error("Error de red fuerte al subir"));
+                        xhr.onerror = () => reject(new Error("Error de red fuerte al subir la foto"));
                         
-                        // Enviamos el blob binario
                         xhr.send(blob); 
                     });
 

@@ -207,7 +207,14 @@
                             body: JSON.stringify({ fileName: nombreArchivo, folderId: FOLDER_ID, fileData: base64data })
                         });
 
-                        const result = await response.json();
+                        // ESCUDO CONTRA COOKIE EXPIRADA DE GOOGLE
+                        const textoRespuesta = await response.text();
+                        let result;
+                        try {
+                            result = JSON.parse(textoRespuesta);
+                        } catch (errorJSON) {
+                            throw new Error("Sesión expirada de Google. Se abrió ventana para autorizar.");
+                        }
                         
                         if(result.status === "success") {
                             addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
@@ -216,7 +223,12 @@
                             throw new Error(result.message || "Error en el proxy");
                         }
                     } catch (e) {
-                        addLog(`ERROR DE RED: ${e.message}`, "error");
+                        if(e.message.includes("Sesión expirada")) {
+                            window.open(APPS_SCRIPT_URL, '_blank');
+                            addLog("VENTANA ABIERTA: Aceptá el permiso y volvé a tomar la foto.", "error");
+                        } else {
+                            addLog(`ERROR DE RED: ${e.message}`, "error");
+                        }
                         resetearBotonPrincipal();
                     }
                 };

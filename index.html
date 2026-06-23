@@ -217,12 +217,11 @@
             let sy = (video.videoHeight - size) / 2;
             ctx.drawImage(video, sx, sy, size, size, 0, 0, 1200, 1200);
 
-            btnCapture.innerText = "⏳ COMPRIMIENDO IMAGEN...";
+            btnCapture.innerText = "⏳ COMPRIMIENDO...";
             btnCapture.style.background = "linear-gradient(45deg, #555, #333)";
 
             canvas.toBlob(async (blob) => {
-                // Cerramos cámara DESPUÉS de comprimir
-                cerrarFoto();
+                cerrarFoto(); // Cerramos después de comprimir
 
                 const pesoKB = (blob.size / 1024).toFixed(2);
                 addLog(`Imagen lista. Peso: ${pesoKB} KB`, "info");
@@ -233,58 +232,43 @@
                     return;
                 }
 
-                btnCapture.innerText = "⏳ SUBIENDO A LA NUBE...";
-                addLog("Enviando datos a los servidores de Google...", "info");
+                btnCapture.innerText = "⏳ SUBIENDO A DRIVE...";
+                addLog("Enviando paquete binario a Google...", "info");
 
                 const meta = document.getElementById('inputMeta').value;
                 let nombreArchivo = `${codigoArticulo}_${photoCount++}`;
                 if(meta) nombreArchivo += `_${meta.replace(/\s+/g, '_')}`;
                 nombreArchivo += ".jpg";
-
-                const file = new File([blob], nombreArchivo, {type: 'image/jpeg'});
                 
                 try {
                     if(!gapiInited) await waitForGapi();
                     
-                    const token = gapi.client.getToken().access_token;
-                    
-                    // --- LA SOLUCIÓN DEFINITIVA: CONSTRUIR EL PAQUETE MANUALMENTE ---
-                    const boundary = '-------314159265358979323846';
-                    const delimiter = "\r\n--" + boundary + "\r\n";
-                    const close_delim = "\r\n--" + boundary + "--";
-
-                    // Armamos el texto de los metadatos
-                    const metadataPart = delimiter +
-                        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-                        JSON.stringify({ name: nombreArchivo, parents: [FOLDER_ID] });
-                    
-                    // Armamos el encabezado de la imagen
-                    const filePart = delimiter +
-                        'Content-Type: ' + file.type + '\r\n\r\n';
-
-                    // Unimos todo en un solo Blob binario, especificando "multipart/related"
-                    const multipartBlob = new Blob(
-                        [metadataPart, filePart, file, close_delim], 
-                        { type: 'multipart/related; boundary=' + boundary }
-                    );
-
-                    // Enviamos con Fetch
-                    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                        method: 'POST',
-                        headers: { 'Authorization': 'Bearer ' + token },
-                        body: multipartBlob
+                    // --- MÉTODO OFICIAL DE GOOGLE PARA SUBIR ARCHIVOS ---
+                    // Al cargar el discovery doc, se crea gapi.client.drive.files
+                    gapi.client.drive.files.create({
+                        resource: {
+                            name: nombreArchivo,
+                            parents: [FOLDER_ID]
+                        },
+                        media: {
+                            mimeType: 'image/jpeg',
+                            body: blob // El blob crudo de la imagen
+                        }
+                    }).then((response) => {
+                        // Si llega aquí, fue un éxito absoluto
+                        addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
+                        resetearEstadoApp();
+                    }).catch((err) => {
+                        // Si falla, mostramos el error real de Google
+                        let errorMsg = "Error desconocido";
+                        if(err.result && err.result.error) errorMsg = err.result.error.message;
+                        else if(err.message) errorMsg = err.message;
+                        addLog(`ERROR DE GOOGLE: ${errorMsg}`, "error");
+                        resetearBotonPrincipal();
                     });
-
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error.message || 'Error de permisos de Google');
-                    }
-                    
-                    addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
-                    resetearEstadoApp();
                     
                 } catch (e) {
-                    addLog(`ERROR AL SUBIR: ${e.message}`, "error");
+                    addLog(`ERROR FATAL: ${e.message}`, "error");
                     resetearBotonPrincipal();
                 }
             }, 'image/jpeg', 0.7);
@@ -314,18 +298,33 @@
         }
 
         // --- GOOGLE DRIVE API ---
-        function gapiLoaded() { gapi.load('client', initializeGapiClient); }
+        function gapiLoaded() { 
+            gapi.load('client', initializeGapiClient); 
+        }
+        
         async function initializeGapiClient() {
             try {
-                await gapi.client.init({ apiKey: API_KEY, clientId: CLIENT_ID, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"], scope: 'https://www.googleapis.com/auth/drive.file' });
+                await gapi.client.init({ 
+                    apiKey: API_KEY, 
+                    clientId: CLIENT_ID, 
+                    // Este discovery doc crea automáticamente gapi.client.drive.files
+                    discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"], 
+                    scope: 'https://www.googleapis.com/auth/drive.file' 
+                });
                 gapiInited = true;
-                addLog("Conexión con Google Drive lista.", "success");
+                addLog("API de Drive inicializada correctamente.", "success");
             } catch (e) {
                 addLog("ERROR FATAL: No se pudo conectar con Google.", "error");
             }
         }
         
-        function waitForGapi() { return new Promise(resolve => { let i = setInterval(() => { if (gapiInited) { clearInterval(i); resolve(); } }, 100); }); }
+        function waitForGapi() { 
+            return new Promise(resolve => { 
+                let i = setInterval(() => { 
+                    if (gapiInited) { clearInterval(i); resolve(); } 
+                }, 100); 
+            }); 
+        }
     </script>
 </body>
 </html>

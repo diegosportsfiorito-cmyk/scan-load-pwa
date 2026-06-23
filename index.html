@@ -30,17 +30,8 @@
         .camera-view.active { display: flex; }
         .camera-box { position: relative; width: 90%; height: 60vh; background: #000; border-radius: 20px; overflow: hidden; border: 2px solid #00f3ff; box-shadow: 0 0 30px rgba(0, 243, 255, 0.3); }
         .camera-box video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* ANIMACIÓN DE ESCANEO ACTIVO */
         .scan-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; height: 60%; border: 2px solid rgba(0, 243, 255, 0.8); border-radius: 10px; pointer-events: none; box-shadow: 0 0 0 4000px rgba(5, 5, 16, 0.75); }
-        .scanning-active .scan-overlay { animation: pulse-border 1.5s infinite; }
-        @keyframes pulse-border { 0% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); } 50% { border-color: #bc13fe; box-shadow: 0 0 20px #bc13fe, 0 0 0 4000px rgba(5, 5, 16, 0.75); } 100% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); } }
-
         .camera-close { position: absolute; top: 20px; right: 20px; background: #ff0055; color: white; border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; }
-        /* BOTÓN LINTERNA */
-        .camera-flash { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); color: white; border: 1px solid #555; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; display: flex; align-items: center; justify-content: center; }
-        .camera-flash.on { background: #ffaa00; border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.6); }
-        
         .camera-capture { margin-top: 20px; background: #00f3ff; color: #000; border: none; border-radius: 50%; width: 70px; height: 70px; font-size: 30px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 243, 255, 0.6); }
         .log-container { margin-top: 15px; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px; height: 150px; overflow-y: auto; position: relative; z-index: 1; }
         .log-header { font-size: 10px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; font-family: monospace; display: flex; justify-content: space-between; align-items: center; }
@@ -100,17 +91,14 @@
         </div>
     </div>
 
-    <!-- VISTA DEL ESCÁNER -->
     <div id="scannerView" class="camera-view">
-        <button class="camera-flash" id="btnFlash" onclick="toggleFlash()">🔦</button>
         <button class="camera-close" onclick="cerrarScanner()">X</button>
-        <div class="camera-box" id="scannerBoxContainer">
+        <div class="camera-box">
             <div id="reader"></div>
             <div class="scan-overlay"></div>
         </div>
     </div>
 
-    <!-- VISTA DE LA FOTO -->
     <div id="photoView" class="camera-view">
         <button class="camera-close" onclick="cerrarFoto()">X</button>
         <div class="camera-box">
@@ -131,49 +119,16 @@
         let codigoArticulo = '';
         let photoCount = 0;
         let videoStreamFoto = null;
-        let currentVideoTrack = null; // Para controlar la linterna
 
         const elemResultado = document.getElementById('codigoResultado');
         const btnScan = document.getElementById('btnScan');
         const btnCapture = document.getElementById('btnCapture');
         const logArea = document.getElementById('logArea');
-        const scannerBoxContainer = document.getElementById('scannerBoxContainer');
-        const btnFlash = document.getElementById('btnFlash');
 
         function addLog(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
             logArea.innerHTML += `<br><span class="log-${type}">[${time}] ${message}</span>`;
             logArea.scrollTop = logArea.scrollHeight;
-        }
-
-        // --- SINTETIZADOR DE VOZ ---
-        function hablar(texto) {
-            if ('speechSynthesis' in window) {
-                const mensaje = new SpeechSynthesisUtterance(texto);
-                mensaje.lang = 'es-ES';
-                mensaje.rate = 0.9; 
-                window.speechSynthesis.speak(mensaje);
-            }
-        }
-
-        // --- CONTROL DE LINTERNA ---
-        async function toggleFlash() {
-            if (!currentVideoTrack) return addLog("Cámara no lista para linterna.", "error");
-            
-            try {
-                const capabilities = currentVideoTrack.getCapabilities();
-                if (!capabilities.torch) {
-                    return addLog("Este celular no tiene linterna integrada.", "error");
-                }
-                
-                const isActive = capabilities.torch ? !currentVideoTrack.getSettings().torch : false;
-                await currentVideoTrack.applyConstraints({ advanced: [{ torch: isActive }] });
-                
-                btnFlash.classList.toggle('on', isActive);
-                addLog(isActive ? "Linterna ENCENDIDA." : "Linterna APAGADA.", "info");
-            } catch (err) {
-                addLog("Error al cambiar linterna: " + err, "error");
-            }
         }
 
         // --- ESCÁNER ---
@@ -190,45 +145,19 @@
                 qrbox: function(vw, vh) { let s = Math.min(vw, vh) * 0.8; return { width: Math.floor(s), height: Math.floor(s * 0.5) }; },
                 formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
             };
-            
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-            .then(() => {
-                addLog("Escáner activo. Apuntando...", "info");
-                scannerBoxContainer.classList.add('scanning-active'); 
-                
-                setTimeout(() => {
-                    const videoElem = document.querySelector('#reader video');
-                    if (videoElem && videoElem.srcObject) {
-                        const tracks = videoElem.srcObject.getVideoTracks();
-                        if (tracks.length > 0) {
-                            currentVideoTrack = tracks[0];
-                        }
-                    }
-                }, 1000);
-            })
+            .then(() => addLog("Escáner activo. Apuntando...", "info"))
             .catch(err => { addLog("ERROR cámara: " + err, "error"); cerrarScanner(); });
         }
 
         function onScanSuccess(decodedText) {
             codigoArticulo = decodedText.split('/')[0].trim(); 
-            elemResultado.innerText = codigoArticulo; 
-            elemResultado.classList.add('active');
-            btnCapture.disabled = false; 
-            
-            hablar("Código detectado: " + codigoArticulo.replace(/-/g, ' guion '));
-            
-            addLog(`Código: ${codigoArticulo}`, "success");
+            elemResultado.innerText = codigoArticulo; elemResultado.classList.add('active');
+            btnCapture.disabled = false; addLog(`Código: ${codigoArticulo}`, "success");
             cerrarScanner(); 
         }
 
         function cerrarScanner() {
-            if (currentVideoTrack && currentVideoTrack.getSettings().torch) {
-                currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(()=>{});
-                btnFlash.classList.remove('on');
-            }
-            currentVideoTrack = null;
-            scannerBoxContainer.classList.remove('scanning-active'); 
-
             if (html5QrCode) html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
             else document.getElementById('scannerView').classList.remove('active');
         }
@@ -278,17 +207,7 @@
                             body: JSON.stringify({ fileName: nombreArchivo, folderId: FOLDER_ID, fileData: base64data })
                         });
 
-                        // Leemos como texto primero para evitar que explote si es una página HTML
-                        const textoRespuesta = await response.text();
-                        let result;
-
-                        try {
-                            result = JSON.parse(textoRespuesta); // Intentamos convertirlo
-                        } catch (errorJSON) {
-                            // Si falla, es porque Google devolvió una página de "Iniciar Sesión"
-                            console.error("Respuesta inválida de Google:", textoRespuesta.substring(0, 100));
-                            throw new Error("Sesión expirada. Se abrió una ventana para autorizar de nuevo.");
-                        }
+                        const result = await response.json();
                         
                         if(result.status === "success") {
                             addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
@@ -297,13 +216,7 @@
                             throw new Error(result.message || "Error en el proxy");
                         }
                     } catch (e) {
-                        // Si fue error de sesión, abrimos Google para que renueve el permiso
-                        if(e.message.includes("Sesión expirada")) {
-                            window.open(APPS_SCRIPT_URL, '_blank');
-                            addLog("VENTANA ABIERTA: Aceptá el permiso y volvé a tomar la foto.", "error");
-                        } else {
-                            addLog(`ERROR DE RED: ${e.message}`, "error");
-                        }
+                        addLog(`ERROR DE RED: ${e.message}`, "error");
                         resetearBotonPrincipal();
                     }
                 };

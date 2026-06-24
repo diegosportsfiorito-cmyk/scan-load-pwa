@@ -23,15 +23,35 @@
         .btn-scan.active { background: rgba(255, 0, 85, 0.2); color: #ff0055; border-color: #ff0055; }
         .btn-action { background: linear-gradient(45deg, #bc13fe, #ff0055); color: #fff; box-shadow: 0 4px 20px rgba(255, 0, 85, 0.5); font-size: 18px; padding: 18px; margin-top: auto; }
         .btn-dev { background: rgba(100,100,100,0.2); color: #666; border: 1px solid #444; padding: 10px; font-size: 11px; width: auto; cursor: not-allowed; }
+        
+        /* Switch Voz */
+        .switch-container { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #00f3ff; box-shadow: 0 0 8px rgba(0, 243, 255, 0.5); }
+        input:checked + .slider:before { transform: translateX(20px); }
+
         .code-display { text-align: center; margin-top: 10px; }
         .code-value { font-size: 24px; font-weight: 800; color: #ff0055; text-shadow: 0 0 8px rgba(255, 0, 85, 0.4); }
         .code-value.active { color: #00f3ff; text-shadow: 0 0 12px rgba(0, 243, 255, 0.6); }
+        
         .camera-view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; display: none; flex-direction: column; justify-content: center; align-items: center; }
         .camera-view.active { display: flex; }
         .camera-box { position: relative; width: 90%; height: 60vh; background: #000; border-radius: 20px; overflow: hidden; border: 2px solid #00f3ff; box-shadow: 0 0 30px rgba(0, 243, 255, 0.3); }
         .camera-box video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Animación Escáner Activo */
         .scan-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; height: 60%; border: 2px solid rgba(0, 243, 255, 0.8); border-radius: 10px; pointer-events: none; box-shadow: 0 0 0 4000px rgba(5, 5, 16, 0.75); }
+        .scanning-active .scan-overlay { animation: pulse-border 1.5s infinite; }
+        @keyframes pulse-border { 0% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); } 50% { border-color: #bc13fe; box-shadow: 0 0 20px #bc13fe, 0 0 0 4000px rgba(5, 5, 16, 0.75); } 100% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); } }
+
         .camera-close { position: absolute; top: 20px; right: 20px; background: #ff0055; color: white; border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; }
+        /* Linterna */
+        .camera-flash { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); color: white; border: 1px solid #555; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; display: flex; align-items: center; justify-content: center; }
+        .camera-flash.on { background: #ffaa00; border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.6); }
+        
         .camera-capture { margin-top: 20px; background: #00f3ff; color: #000; border: none; border-radius: 50%; width: 70px; height: 70px; font-size: 30px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 243, 255, 0.6); }
         .log-container { margin-top: 15px; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px; height: 150px; overflow-y: auto; position: relative; z-index: 1; }
         .log-header { font-size: 10px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; font-family: monospace; display: flex; justify-content: space-between; align-items: center; }
@@ -70,6 +90,16 @@
         <div class="card">
             <span class="card-title">3. CÓDIGO INTERNO (DRAGON FISH) - OBLIGATORIO</span>
             <button id="btnScan" class="btn btn-scan">Escanear Código Interno</button>
+            
+            <!-- SWITCH DE VOZ -->
+            <div class="switch-container">
+                <span class="card-title" style="margin:0">Voz al escanear</span>
+                <label class="switch">
+                    <input type="checkbox" id="switchVoz" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
             <div class="code-display">
                 <span class="code-value" id="codigoResultado">Ninguno</span>
             </div>
@@ -91,14 +121,17 @@
         </div>
     </div>
 
+    <!-- VISTA DEL ESCÁNER -->
     <div id="scannerView" class="camera-view">
+        <button class="camera-flash" id="btnFlash" onclick="toggleFlash()">🔦</button>
         <button class="camera-close" onclick="cerrarScanner()">X</button>
-        <div class="camera-box">
+        <div class="camera-box" id="scannerBoxContainer">
             <div id="reader"></div>
             <div class="scan-overlay"></div>
         </div>
     </div>
 
+    <!-- VISTA DE LA FOTO -->
     <div id="photoView" class="camera-view">
         <button class="camera-close" onclick="cerrarFoto()">X</button>
         <div class="camera-box">
@@ -111,19 +144,26 @@
     <canvas id="canvas"></canvas>
 
     <script>
-        // --- CONFIGURACIÓN ---
+        // ====================================================================
+        // ZONA DE CONFIGURACIÓN SEGURA (NO TOCAR ABAJO DE ESTA LÍNEA)
+        // ====================================================================
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnu0zTKRdBOz9aHsoL2MvVgMQNGOrNfvwEkyJUMUdnuz1GGo75ufxsOL45_5SjWURh/exec'; 
         const FOLDER_ID = '1siuX4Rju_6eVwdVsGnl4nCZ6IO4ATrzQ'; 
+        // ====================================================================
 
         let html5QrCode = null;
         let codigoArticulo = '';
         let photoCount = 0;
         let videoStreamFoto = null;
+        let currentVideoTrack = null; // Para controlar la linterna
 
         const elemResultado = document.getElementById('codigoResultado');
         const btnScan = document.getElementById('btnScan');
         const btnCapture = document.getElementById('btnCapture');
         const logArea = document.getElementById('logArea');
+        const scannerBoxContainer = document.getElementById('scannerBoxContainer');
+        const btnFlash = document.getElementById('btnFlash');
+        const switchVoz = document.getElementById('switchVoz');
 
         function addLog(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
@@ -131,38 +171,94 @@
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // --- ESCÁNER ---
+        // --- SINTETIZADOR DE VOZ CON SWITCH ---
+        function hablar(texto) {
+            if (!switchVoz.checked) return; // Si está apagado, no hace nada
+            if ('speechSynthesis' in window) {
+                const mensaje = new SpeechSynthesisUtterance(texto);
+                mensaje.lang = 'es-ES';
+                mensaje.rate = 0.9; 
+                window.speechSynthesis.speak(mensaje);
+            }
+        }
+
+        // --- CONTROL DE LINTERNA ---
+        async function toggleFlash() {
+            if (!currentVideoTrack) return addLog("Cámara no lista.", "error");
+            try {
+                const capabilities = currentVideoTrack.getCapabilities();
+                if (!capabilities.torch) return addLog("Este celular no tiene linterna.", "error");
+                
+                const isActive = capabilities.torch ? !currentVideoTrack.getSettings().torch : false;
+                await currentVideoTrack.applyConstraints({ advanced: [{ torch: isActive }] });
+                
+                btnFlash.classList.toggle('on', isActive);
+                addLog(isActive ? "Linterna ON." : "Linterna OFF.", "info");
+            } catch (err) {
+                addLog("Error al cambiar linterna: " + err, "error");
+            }
+        }
+
+        // --- ESCÁNER MEJORADO (Enfoque automático) ---
         btnScan.addEventListener('click', () => {
             document.getElementById('scannerView').classList.add('active');
-            addLog("Abriendo escáner...", "info");
+            addLog("Abriendo escáner ultrarrápido...", "info");
             setTimeout(startScanner, 500);
         });
 
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
             const config = { 
-                fps: 15, 
-                qrbox: function(vw, vh) { let s = Math.min(vw, vh) * 0.8; return { width: Math.floor(s), height: Math.floor(s * 0.5) }; },
+                fps: 20, // Subimos a 20 fotogramas por segundo para lectura instantánea
+                qrbox: function(vw, vh) { 
+                    let s = Math.min(vw, vh) * 0.85; // Damos un poco más de espacio para Code 39
+                    return { width: Math.floor(s), height: Math.floor(s * 0.4) }; // Más alargado
+                },
                 formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
             };
+            
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-            .then(() => addLog("Escáner activo. Apuntando...", "info"))
+            .then(() => {
+                addLog("Escáner activo. Apuntando...", "info");
+                scannerBoxContainer.classList.add('scanning-active'); // Animación visual de enfoque
+                
+                // Capturamos la pista de video DESPUÉS para no romper la librería
+                setTimeout(() => {
+                    const videoElem = document.querySelector('#reader video');
+                    if (videoElem && videoElem.srcObject) {
+                        const tracks = videoElem.srcObject.getVideoTracks();
+                        if (tracks.length > 0) currentVideoTrack = tracks[0];
+                    }
+                }, 1000);
+            })
             .catch(err => { addLog("ERROR cámara: " + err, "error"); cerrarScanner(); });
         }
 
         function onScanSuccess(decodedText) {
             codigoArticulo = decodedText.split('/')[0].trim(); 
             elemResultado.innerText = codigoArticulo; elemResultado.classList.add('active');
-            btnCapture.disabled = false; addLog(`Código: ${codigoArticulo}`, "success");
+            btnCapture.disabled = false; 
+            
+            hablar("Código detectado: " + codigoArticulo.replace(/-/g, ' guion ')); // Voz inteligente
+            
+            addLog(`Código: ${codigoArticulo}`, "success");
             cerrarScanner(); 
         }
 
         function cerrarScanner() {
+            // Apagamos linterna al salir
+            if (currentVideoTrack && currentVideoTrack.getSettings().torch) {
+                currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(()=>{});
+                btnFlash.classList.remove('on');
+            }
+            currentVideoTrack = null;
+            scannerBoxContainer.classList.remove('scanning-active'); // Quitamos animación
+
             if (html5QrCode) html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
             else document.getElementById('scannerView').classList.remove('active');
         }
 
-        // --- FOTO ---
+        // --- FOTO (ZONA BLINDADA - NO TOCAR) ---
         btnCapture.addEventListener('click', async () => {
             if(!codigoArticulo) return addLog("ERROR: Escanee el código primero.", "error");
             document.getElementById('photoView').classList.add('active');
@@ -207,7 +303,7 @@
                             body: JSON.stringify({ fileName: nombreArchivo, folderId: FOLDER_ID, fileData: base64data })
                         });
 
-                        // ESCUDO CONTRA COOKIE EXPIRADA DE GOOGLE
+                        // ESCUDO CONTRA COOKIE EXPIRADA
                         const textoRespuesta = await response.text();
                         let result;
                         try {

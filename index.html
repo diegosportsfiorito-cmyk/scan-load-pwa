@@ -142,6 +142,35 @@
         .log-success { color: #00ff00; }
         .log-error { color: #ff0055; }
         canvas { display: none; }
+
+        /* ===== PANTALLA DE CONFIRMACIÓN ===== */
+        .confirm-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 2000;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            padding: 30px;
+        }
+        .confirm-overlay.active { display: flex; }
+        .confirm-card {
+            background: rgba(20, 20, 35, 0.95); border: 1px solid rgba(0, 243, 255, 0.3);
+            border-radius: 20px; padding: 25px 20px; width: 100%; max-width: 340px; text-align: center;
+        }
+        .confirm-label { font-size: 11px; color: #8b8b9e; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 15px; }
+        .confirm-code { font-size: 22px; font-weight: 800; color: #00f3ff; word-break: break-all; margin-bottom: 8px; text-shadow: 0 0 10px rgba(0,243,255,0.4); }
+        .confirm-file { font-size: 12px; color: #aaa; margin-bottom: 20px; word-break: break-all; }
+        .confirm-buttons { display: flex; gap: 10px; }
+        .btn-confirm-yes {
+            flex: 1; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 700;
+            background: linear-gradient(45deg, #00c853, #00e676); color: #000; border: none; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .btn-confirm-no {
+            flex: 1; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 700;
+            background: rgba(255, 0, 85, 0.15); color: #ff0055; border: 1.5px solid #ff0055; cursor: pointer;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .confirm-warning { font-size: 11px; color: #ffaa00; margin-top: 12px; display: none; }
+        .confirm-warning.visible { display: block; }
     </style>
 </head>
 <body>
@@ -249,6 +278,20 @@
         <button class="camera-capture" onclick="tomarFoto()">📸</button>
     </div>
 
+    <!-- ==================== PANTALLA DE CONFIRMACIÓN ==================== -->
+    <div id="confirmView" class="confirm-overlay">
+        <div class="confirm-card">
+            <div class="confirm-label">¿Este es el código correcto?</div>
+            <div class="confirm-code" id="confirmCode">-</div>
+            <div class="confirm-file" id="confirmFile">Archivo: -</div>
+            <div class="confirm-buttons">
+                <button class="btn-confirm-no" onclick="rechazarCodigo()">Reintentar</button>
+                <button class="btn-confirm-yes" onclick="confirmarCodigo()">Confirmar</button>
+            </div>
+            <div class="confirm-warning" id="confirmWarning">Código sospechoso: no coincide con formato esperado</div>
+        </div>
+    </div>
+
     <canvas id="canvas"></canvas>
 
     <script>
@@ -277,6 +320,9 @@
         let pinchStartDist = 0;
         let pinchStartZoom = 1;
         let zoomHideTimeout = null;
+        let flashDisponible = null;  // null = no verificado, true/false = cacheado
+        let pendingParsed = null;   // Código pendiente de confirmación
+        let scanRejectCount = 0;    // Cuenta lecturas rechazadas por validación (para log)
 
 
         // ====================================================================
@@ -384,18 +430,44 @@
         // ====================================================================
         async function toggleFlash() {
             if (!currentVideoTrack) return addLog("Cámara no lista.", "error");
+            // Si ya sabemos que no tiene linterna, no volver a intentar
+            if (flashDisponible === false) return;
             try {
+                if (typeof currentVideoTrack.getCapabilities !== 'function') {
+                    flashDisponible = false;
+                    return addLog("Linterna: no disponible.", "info");
+                }
                 const capabilities = currentVideoTrack.getCapabilities();
-                if (!capabilities.torch) return addLog("Este celular no tiene linterna.", "error");
+                if (!capabilities.torch) {
+                    flashDisponible = false;
+                    return addLog("Linterna: no disponible en este dispositivo.", "info");
+                }
+                flashDisponible = true;
                 const isActive = !currentVideoTrack.getSettings().torch;
                 await currentVideoTrack.applyConstraints({ advanced: [{ torch: isActive }] });
                 btnFlash.classList.toggle('on', isActive);
                 addLog(isActive ? "Linterna ON." : "Linterna OFF.", "info");
             } catch (err) {
-                addLog("Error linterna: " + err, "error");
+                flashDisponible = false;
+                addLog("Linterna: error.", "error");
             }
         }
 
+
+        // ====================================================================
+        // VALIDACIÓN DE CÓDIGO DE BARRA (filtra lecturas basura)
+        // ====================================================================
+        function validarCodigo(texto) {
+            // Solo permite: letras, números, guiones, !, /
+            if (!/^[A-Za-z0-9\-!\/]+$/.test(texto)) return false;
+            // Longitud mínima razonable
+            if (texto.length < 3) return false;
+            // Rechazar si tiene demasiados caracteres especiales vs alfanuméricos
+            const especiales = (texto.match(/[!\/-]/g) || []).length;
+            const alfanumericos = (texto.match(/[A-Za-z0-9]/g) || []).length;
+            if (especiales > alfanumericos) return false;
+            return true;
+        }
 
         // ====================================================================
         // INTENTAR ACTIVAR AUTO-ENFOQUE CONTINUO
@@ -403,6 +475,11 @@
         async function intentarAutofoco(track) {
             if (!track) return;
             try {
+                // Verificar si getCapabilities existe (algunos navegadores no lo tienen)
+                if (typeof track.getCapabilities !== 'function') {
+                    addLog("Auto-enfoque: API no disponible en este navegador.", "info");
+                    return;
+                }
                 const caps = track.getCapabilities();
                 if (caps.focusMode) {
                     const modes = caps.focusMode;
@@ -410,15 +487,16 @@
                         await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
                         addLog("Auto-enfoque continuo: ON", "info");
                     } else if (modes.includes('auto')) {
-                        // Fallback: modo auto
                         await track.applyConstraints({ advanced: [{ focusMode: 'auto' }] });
                         addLog("Auto-enfoque: ON (modo auto)", "info");
+                    } else {
+                        addLog("Auto-enfoque: modo no reconocido (" + modes.join(',') + ")", "info");
                     }
                 } else {
-                    addLog("Auto-enfoque no disponible en este dispositivo.", "info");
+                    addLog("Auto-enfoque: no disponible en este dispositivo.", "info");
                 }
             } catch(e) {
-                addLog("Auto-enfoque: no soportado.", "info");
+                addLog("Auto-enfoque: error - " + (e.message || e).substring(0, 60), "info");
             }
         }
 
@@ -438,7 +516,7 @@
             html5QrCode = new Html5Qrcode("reader");
 
             const config = {
-                fps: 20,
+                fps: 15,
                 qrbox: function(vw, vh) {
                     // Overlay optimizado para Code 39 (más ancho que alto)
                     let w = Math.floor(vw * 0.92);
@@ -447,8 +525,8 @@
                 },
                 formatsToSupport: [
                     Html5QrcodeSupportedFormats.CODE_39,
-                    Html5QrcodeSupportedFormats.CODE_128,
-                    Html5QrcodeSupportedFormats.EAN_13
+                    Html5QrcodeSupportedFormats.CODE_128
+                    // EAN_13 eliminado: solo se usa en el input manual (Sección 1)
                 ]
             };
 
@@ -494,13 +572,53 @@
             }
         }
 
-        // Callback cuando se lee un código correctamente
+        // Callback cuando se lee un código - VALIDA y muestra confirmación
         function onScanSuccess(decodedText) {
-            // Parsear el código de barras completo
-            parsedBarcode = parseBarcode(decodedText);
+            // PASO 1: Validar que no sea basura
+            if (!validarCodigo(decodedText)) {
+                scanRejectCount++;
+                // Mostrar cada 3 rechazos para no llenar el log
+                if (scanRejectCount <= 3 || scanRejectCount % 5 === 0) {
+                    addLog('Lectura descartada (inválida): "' + decodedText.substring(0, 20) + '"', 'error');
+                }
+                return; // No hacer nada, el escáner sigue intentando
+            }
+
+            // PASO 2: Parsear el código
+            const parsed = parseBarcode(decodedText);
+            const fullCode = buildFileName(parsed, taxonomyMode);
+
+            // PASO 3: Cerrar escáner y mostrar confirmación
+            cerrarScanner(() => {
+                mostrarConfirmacion(parsed, fullCode);
+            });
+        }
+
+        // Muestra la pantalla de confirmación del código escaneado
+        function mostrarConfirmacion(parsed, fullCode) {
+            pendingParsed = parsed;
+
+            document.getElementById('confirmCode').innerText = parsed.raw;
+            document.getElementById('confirmFile').innerText = 'Archivo: ' + fullCode + '_#.jpg';
+
+            // Mostrar advertencia si el código parece sospechoso
+            const warning = document.getElementById('confirmWarning');
+            const sospechoso = parsed.article.length < 3 || /[^A-Za-z0-9\-]/.test(parsed.article);
+            warning.classList.toggle('visible', sospechoso);
+
+            document.getElementById('confirmView').classList.add('active');
+            hablar('Código detectado: ' + parsed.article.replace(/-/g, ' guion '));
+        }
+
+        // Usuario confirma que el código es correcto
+        function confirmarCodigo() {
+            document.getElementById('confirmView').classList.remove('active');
+            if (!pendingParsed) return;
+
+            parsedBarcode = pendingParsed;
             const fullCode = buildFileName(parsedBarcode, taxonomyMode);
 
-            // Lógica del contador de fotos: si es el mismo código, suma; si es distinto, reinicia
+            // Contador de fotos
             if (fullCode === lastFullCode) {
                 photoCount++;
             } else {
@@ -514,36 +632,53 @@
             photoNumDisplay.innerText = 'Próxima foto: #' + photoCount;
             btnCapture.disabled = false;
 
-            // Voz: dice el artículo completo
-            hablar("Código detectado: " + parsedBarcode.article.replace(/-/g, ' guion '));
-
             // Log detallado
-            let detalle = 'Leído: ' + parsedBarcode.raw;
+            let detalle = 'Confirmado: ' + parsedBarcode.raw;
             detalle += ' → Art: ' + parsedBarcode.article;
             if (parsedBarcode.color) detalle += ' | Color: ' + parsedBarcode.color;
             if (parsedBarcode.size) detalle += ' | Talle: ' + parsedBarcode.size;
             detalle += ' → Archivo: ' + fullCode + '_' + photoCount + '.jpg';
-            addLog(detalle, "success");
+            addLog(detalle, 'success');
 
-            cerrarScanner();
+            scanRejectCount = 0;
+            pendingParsed = null;
         }
 
-        function cerrarScanner() {
+        // Usuario rechaza el código, vuelve a escanear
+        function rechazarCodigo() {
+            document.getElementById('confirmView').classList.remove('active');
+            pendingParsed = null;
+            addLog('Código rechazado. Reescaneando...', 'info');
+            // Reabrir el escáner automáticamente
+            document.getElementById('scannerView').classList.add('active');
+            setTimeout(iniciarScanner, 300);
+        }
+
+        function cerrarScanner(callback) {
             // Apagar linterna al salir
-            if (currentVideoTrack && currentVideoTrack.getSettings().torch) {
-                currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
-                btnFlash.classList.remove('on');
+            if (currentVideoTrack) {
+                try {
+                    if (currentVideoTrack.getSettings().torch) {
+                        currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+                        btnFlash.classList.remove('on');
+                    }
+                } catch(e) {}
             }
             currentVideoTrack = null;
             scannerBoxContainer.classList.remove('scanning-active');
 
+            const ocultar = () => {
+                document.getElementById('scannerView').classList.remove('active');
+                if (callback) callback();
+            };
+
             if (html5QrCode) {
                 html5QrCode.stop().then(() => {
                     html5QrCode.clear();
-                    document.getElementById('scannerView').classList.remove('active');
-                }).catch(() => document.getElementById('scannerView').classList.remove('active'));
+                    ocultar();
+                }).catch(() => ocultar());
             } else {
-                document.getElementById('scannerView').classList.remove('active');
+                ocultar();
             }
         }
 

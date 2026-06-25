@@ -557,17 +557,27 @@
             document.getElementById('reader').style.display = 'none';
 
             try {
+                // RESOLUCIÓN FULL del sensor — igual que Barcode Scanner+
+                // 1920x1080 daba barras de 2-3px → muy finas para detectar
+                // 4032x3024 da barras de 5-6px → detección instantánea
                 nativeStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "environment",
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    },
-                    // Hint para que el browser exponga torch en este Samsung M12
-                    advanced: [{ torch: false }]
+                        width: { ideal: 4032 },
+                        height: { ideal: 3024 },
+                        frameRate: { ideal: 30 },
+                        advanced: [{ torch: false }]
+                    }
                 });
                 scannerVideo.srcObject = nativeStream;
                 await scannerVideo.play();
+
+                // Log de resolución real obtenida
+                const sv = document.getElementById('scannerVideo');
+                const logRes = () => {
+                    addLog("Escáner cámara: " + sv.videoWidth + "x" + sv.videoHeight + " @ " + sv.videoWidth + "px", "info");
+                };
+                if (sv.videoWidth > 0) { logRes(); } else { sv.onloadedmetadata = logRes; }
 
                 // Obtener track para zoom, flash y autofoco
                 const tracks = nativeStream.getVideoTracks();
@@ -603,7 +613,10 @@
                 }
             } catch(e) {}
             if (nativeScanning) {
-                requestAnimationFrame(nativeScanLoop);
+                // Usar setTimeout en vez de rAF para escaneo más rápido
+                // rAF se sincroniza con el display (60fps) pero el await
+                // de detect() ya consume tiempo → mejor reintentar inmediato
+                setTimeout(nativeScanLoop, 80);
             }
         }
 

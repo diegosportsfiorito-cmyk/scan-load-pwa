@@ -263,6 +263,7 @@
     <!-- ==================== VISTA DE LA FOTO ==================== -->
     <div id="photoView" class="camera-view">
         <button class="camera-close" onclick="cerrarFoto()">X</button>
+        <button class="camera-flash" id="btnFlashFoto" onclick="toggleFlashFoto()">🔦</button>
         <div class="camera-box" id="photoBoxContainer">
             <video id="videoFoto" autoplay playsinline></video>
             <!-- GUÍA VISUAL CUADRADA -->
@@ -435,21 +436,20 @@
 
 
         // ====================================================================
-        // LINTERNA
+        // LINTERNA (escáner)
         // ====================================================================
         async function toggleFlash() {
             if (!currentVideoTrack) return addLog("Cámara no lista.", "error");
-            // Si ya sabemos que no tiene linterna, no volver a intentar
             if (flashDisponible === false) return;
             try {
                 if (typeof currentVideoTrack.getCapabilities !== 'function') {
                     flashDisponible = false;
-                    return addLog("Linterna: no disponible en este navegador. Probá prenderla desde el panel rápido de Android (deslizar de arriba a abajo).", "info");
+                    return addLog("Linterna escáner: no disponible. Usá el panel de Android.", "info");
                 }
                 const capabilities = currentVideoTrack.getCapabilities();
                 if (!capabilities.torch) {
                     flashDisponible = false;
-                    return addLog("Linterna: no soportada por este teléfono vía navegador. Prendela desde el panel rápido de Android antes de abrir la cámara.", "info");
+                    return addLog("Linterna escáner: no soportada. Usá el panel de Android.", "info");
                 }
                 flashDisponible = true;
                 const isActive = !currentVideoTrack.getSettings().torch;
@@ -518,6 +518,8 @@
             addLog("Abriendo escáner...", "info");
             scannerZoomLevel = 1;
             zoomLabel.textContent = '1.0x';
+            flashDisponible = null;  // Re-verificar linterna cada vez
+            btnFlash.classList.remove('on');
             setTimeout(iniciarScanner, 500);
         });
 
@@ -560,7 +562,9 @@
                         facingMode: "environment",
                         width: { ideal: 1920 },
                         height: { ideal: 1080 }
-                    }
+                    },
+                    // Hint para que el browser exponga torch en este Samsung M12
+                    advanced: [{ torch: false }]
                 });
                 scannerVideo.srcObject = nativeStream;
                 await scannerVideo.play();
@@ -796,6 +800,44 @@
             } else {
                 ocultar();
             }
+        }
+
+
+        // ====================================================================
+        // LINTERNA (foto) — control independiente para la cámara de fotos
+        // ====================================================================
+        async function toggleFlashFoto() {
+            if (!videoStreamFoto) return;
+            const track = videoStreamFoto.getVideoTracks()[0];
+            if (!track) return;
+            const btnFF = document.getElementById('btnFlashFoto');
+            try {
+                if (typeof track.getCapabilities !== 'function') {
+                    return addLog("Linterna foto: no disponible vía app. Usá panel de Android.", "info");
+                }
+                const caps = track.getCapabilities();
+                if (!caps.torch) {
+                    return addLog("Linterna foto: no soportada. Usá panel de Android.", "info");
+                }
+                const isActive = !track.getSettings().torch;
+                await track.applyConstraints({ advanced: [{ torch: isActive }] });
+                btnFF.classList.toggle('on', isActive);
+                addLog(isActive ? "Linterna foto ON." : "Linterna foto OFF.", "info");
+            } catch(e) {
+                addLog("Linterna foto: error.", "error");
+            }
+        }
+
+        function apagarFlashFoto() {
+            if (!videoStreamFoto) return;
+            const track = videoStreamFoto.getVideoTracks()[0];
+            if (!track) return;
+            try {
+                if (track.getSettings().torch) {
+                    track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+                }
+            } catch(e) {}
+            document.getElementById('btnFlashFoto').classList.remove('on');
         }
 
 
@@ -1043,6 +1085,7 @@
         }
 
         function cerrarFoto() {
+            apagarFlashFoto();
             if (videoStreamFoto) {
                 videoStreamFoto.getTracks().forEach(track => track.stop());
                 videoStreamFoto = null;

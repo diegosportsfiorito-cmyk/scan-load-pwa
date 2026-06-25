@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Punto Cero - Scan & Load</title>
+    <title>Punto Cero - Scan & Load v2</title>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -23,7 +23,21 @@
         .btn-scan.active { background: rgba(255, 0, 85, 0.2); color: #ff0055; border-color: #ff0055; }
         .btn-action { background: linear-gradient(45deg, #bc13fe, #ff0055); color: #fff; box-shadow: 0 4px 20px rgba(255, 0, 85, 0.5); font-size: 18px; padding: 18px; margin-top: auto; }
         .btn-dev { background: rgba(100,100,100,0.2); color: #666; border: 1px solid #444; padding: 10px; font-size: 11px; width: auto; cursor: not-allowed; }
-        
+
+        /* ===== TAXONOMÍA SWITCHES ===== */
+        .taxonomy-section { margin-bottom: 12px; }
+        .taxonomy-label { font-size: 10px; font-weight: 700; color: #8b8b9e; letter-spacing: 1px; margin-bottom: 6px; display: block; }
+        .taxonomy-switches { display: flex; gap: 5px; }
+        .tax-btn {
+            flex: 1; padding: 8px 2px; border: 1px solid rgba(0, 243, 255, 0.25); border-radius: 8px;
+            background: transparent; color: #555; font-size: 9px; font-weight: 700; cursor: pointer;
+            transition: all 0.3s; text-transform: uppercase; text-align: center; line-height: 1.2;
+        }
+        .tax-btn.active {
+            background: rgba(0, 243, 255, 0.12); border-color: #00f3ff; color: #00f3ff;
+            box-shadow: 0 0 8px rgba(0, 243, 255, 0.15);
+        }
+
         /* Switch Voz */
         .switch-container { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
         .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
@@ -34,25 +48,91 @@
         input:checked + .slider:before { transform: translateX(20px); }
 
         .code-display { text-align: center; margin-top: 10px; }
-        .code-value { font-size: 24px; font-weight: 800; color: #ff0055; text-shadow: 0 0 8px rgba(255, 0, 85, 0.4); }
+        .code-value { font-size: 20px; font-weight: 800; color: #ff0055; text-shadow: 0 0 8px rgba(255, 0, 85, 0.4); word-break: break-all; }
         .code-value.active { color: #00f3ff; text-shadow: 0 0 12px rgba(0, 243, 255, 0.6); }
-        
+        .code-photo-num { font-size: 12px; color: #8b8b9e; margin-top: 2px; }
+
+        /* ===== VISTAS DE CÁMARA ===== */
         .camera-view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; display: none; flex-direction: column; justify-content: center; align-items: center; }
         .camera-view.active { display: flex; }
         .camera-box { position: relative; width: 90%; height: 60vh; background: #000; border-radius: 20px; overflow: hidden; border: 2px solid #00f3ff; box-shadow: 0 0 30px rgba(0, 243, 255, 0.3); }
         .camera-box video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* Animación Escáner Activo */
-        .scan-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; height: 60%; border: 2px solid rgba(0, 243, 255, 0.8); border-radius: 10px; pointer-events: none; box-shadow: 0 0 0 4000px rgba(5, 5, 16, 0.75); }
-        .scanning-active .scan-overlay { animation: pulse-border 1.5s infinite; }
-        @keyframes pulse-border { 0% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); } 50% { border-color: #bc13fe; box-shadow: 0 0 20px #bc13fe, 0 0 0 4000px rgba(5, 5, 16, 0.75); } 100% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); } }
 
-        .camera-close { position: absolute; top: 20px; right: 20px; background: #ff0055; color: white; border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; }
-        /* Linterna */
-        .camera-flash { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); color: white; border: 1px solid #555; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; z-index: 1001; display: flex; align-items: center; justify-content: center; }
+        /* ===== OVERLAY ESCÁNER (optimizado Code 39) ===== */
+        .scan-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; height: 35%; border: 2px solid rgba(0, 243, 255, 0.6); border-radius: 10px; pointer-events: none; box-shadow: 0 0 0 4000px rgba(5, 5, 16, 0.75); }
+        .scanning-active .scan-overlay { animation: pulse-border 1.5s infinite; }
+        @keyframes pulse-border {
+            0% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); }
+            50% { border-color: #bc13fe; box-shadow: 0 0 20px #bc13fe, 0 0 0 4000px rgba(5, 5, 16, 0.75); }
+            100% { border-color: #00f3ff; box-shadow: 0 0 10px #00f3ff, 0 0 0 4000px rgba(5, 5, 16, 0.75); }
+        }
+
+        /* ===== GUÍA DE FOTO (cuadrada con esquinas) ===== */
+        #photoView .camera-box { height: 65vh; }
+        .photo-guide {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 82%; aspect-ratio: 1; pointer-events: none; z-index: 5;
+            box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45);
+        }
+        .guide-corner { position: absolute; width: 28px; height: 28px; border-color: #00f3ff; border-style: solid; border-width: 0; }
+        .guide-corner.tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; border-top-left-radius: 6px; }
+        .guide-corner.tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-top-right-radius: 6px; }
+        .guide-corner.bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-bottom-left-radius: 6px; }
+        .guide-corner.br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-bottom-right-radius: 6px; }
+        .guide-text {
+            position: absolute; bottom: -28px; left: 50%; transform: translateX(-50%);
+            font-size: 10px; color: rgba(0, 243, 255, 0.7); white-space: nowrap; font-weight: 600; letter-spacing: 0.5px;
+        }
+        .guide-crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 24px; height: 24px; pointer-events: none; opacity: 0.4;
+        }
+        .guide-crosshair::before, .guide-crosshair::after {
+            content: ''; position: absolute; background: #00f3ff;
+        }
+        .guide-crosshair::before { width: 1px; height: 100%; left: 50%; top: 0; }
+        .guide-crosshair::after { height: 1px; width: 100%; top: 50%; left: 0; }
+
+        /* ===== CONTROLES DE CÁMARA ===== */
+        .camera-close { position: absolute; top: 15px; right: 15px; background: #ff0055; color: white; border: none; border-radius: 50%; width: 46px; height: 46px; font-size: 22px; cursor: pointer; z-index: 1001; display: flex; align-items: center; justify-content: center; }
+        .camera-flash { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); color: white; border: 1px solid #555; border-radius: 50%; width: 46px; height: 46px; font-size: 22px; cursor: pointer; z-index: 1001; display: flex; align-items: center; justify-content: center; }
         .camera-flash.on { background: #ffaa00; border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.6); }
-        
         .camera-capture { margin-top: 20px; background: #00f3ff; color: #000; border: none; border-radius: 50%; width: 70px; height: 70px; font-size: 30px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 243, 255, 0.6); }
+
+        /* ===== ZOOM CONTROLES ESCÁNER ===== */
+        .zoom-controls {
+            display: flex; align-items: center; gap: 15px; margin-top: 15px;
+            background: rgba(0,0,0,0.4); padding: 8px 20px; border-radius: 30px;
+        }
+        .zoom-btn {
+            width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #00f3ff;
+            background: rgba(0, 243, 255, 0.08); color: #00f3ff; font-size: 26px; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1;
+        }
+        .zoom-btn:active { background: rgba(0, 243, 255, 0.25); }
+        .zoom-label { color: #00f3ff; font-size: 16px; font-weight: 700; min-width: 50px; text-align: center; }
+
+        /* ===== ZOOM INDICADOR FOTO ===== */
+        .zoom-indicator {
+            position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7); color: #00f3ff; padding: 5px 14px; border-radius: 14px;
+            font-size: 14px; font-weight: 700; opacity: 0; transition: opacity 0.3s;
+            pointer-events: none; z-index: 1001; border: 1px solid rgba(0,243,255,0.3);
+        }
+        .zoom-indicator.visible { opacity: 1; }
+
+        /* TAP TO FOCUS INDICATOR */
+        .focus-ring {
+            position: absolute; width: 70px; height: 70px; border: 2px solid #ffcc00;
+            border-radius: 50%; pointer-events: none; z-index: 10;
+            animation: focusPulse 0.6s ease-out forwards;
+        }
+        @keyframes focusPulse {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+        }
+
+        /* ===== LOG ===== */
         .log-container { margin-top: 15px; background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px; height: 150px; overflow-y: auto; position: relative; z-index: 1; }
         .log-header { font-size: 10px; color: #888; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; font-family: monospace; display: flex; justify-content: space-between; align-items: center; }
         .btn-copy-log { background: transparent; color: #00f3ff; border: 1px solid #333; padding: 2px 8px; border-radius: 4px; font-size: 9px; cursor: pointer; text-transform: uppercase; }
@@ -68,7 +148,7 @@
     <div class="app-container">
         <header>
             <h1>Punto Cero</h1>
-            <p class="subtitle">Sistema de Carga</p>
+            <p class="subtitle">Sistema de Carga v2</p>
         </header>
 
         <div class="card">
@@ -89,8 +169,19 @@
 
         <div class="card">
             <span class="card-title">3. CÓDIGO INTERNO (DRAGON FISH) - OBLIGATORIO</span>
+
+            <!-- SWITCHES DE TAXONOMÍA -->
+            <div class="taxonomy-section">
+                <span class="taxonomy-label">Formato del nombre de archivo:</span>
+                <div class="taxonomy-switches">
+                    <button class="tax-btn active" data-mode="article">Artículo</button>
+                    <button class="tax-btn" data-mode="articleColor">Art + Color</button>
+                    <button class="tax-btn" data-mode="articleColorSize">Art + Color + Talle</button>
+                </div>
+            </div>
+
             <button id="btnScan" class="btn btn-scan">Escanear Código Interno</button>
-            
+
             <!-- SWITCH DE VOZ -->
             <div class="switch-container">
                 <span class="card-title" style="margin:0">Voz al escanear</span>
@@ -102,6 +193,7 @@
 
             <div class="code-display">
                 <span class="code-value" id="codigoResultado">Ninguno</span>
+                <div class="code-photo-num" id="photoNumDisplay"></div>
             </div>
         </div>
 
@@ -117,11 +209,11 @@
                 <span>> LOG DEL SISTEMA</span>
                 <button class="btn-copy-log" onclick="navigator.clipboard.writeText(document.getElementById('logArea').innerText)">Copiar</button>
             </div>
-            <div id="logArea" class="log-text log-info">Sistema iniciado correctamente.</div>
+            <div id="logArea" class="log-text log-info">Sistema v2 iniciado correctamente.</div>
         </div>
     </div>
 
-    <!-- VISTA DEL ESCÁNER -->
+    <!-- ==================== VISTA DEL ESCÁNER ==================== -->
     <div id="scannerView" class="camera-view">
         <button class="camera-flash" id="btnFlash" onclick="toggleFlash()">🔦</button>
         <button class="camera-close" onclick="cerrarScanner()">X</button>
@@ -129,15 +221,31 @@
             <div id="reader"></div>
             <div class="scan-overlay"></div>
         </div>
+        <!-- ZOOM CONTROLES PARA ESCÁNER -->
+        <div class="zoom-controls">
+            <button class="zoom-btn" onclick="ajustarZoomEscanner(-0.5)">−</button>
+            <span class="zoom-label" id="zoomLabel">1.0x</span>
+            <button class="zoom-btn" onclick="ajustarZoomEscanner(0.5)">+</button>
+        </div>
     </div>
 
-    <!-- VISTA DE LA FOTO -->
+    <!-- ==================== VISTA DE LA FOTO ==================== -->
     <div id="photoView" class="camera-view">
         <button class="camera-close" onclick="cerrarFoto()">X</button>
-        <div class="camera-box">
+        <div class="camera-box" id="photoBoxContainer">
             <video id="videoFoto" autoplay playsinline></video>
-            <div class="scan-overlay"></div>
+            <!-- GUÍA VISUAL CUADRADA -->
+            <div class="photo-guide">
+                <div class="guide-corner tl"></div>
+                <div class="guide-corner tr"></div>
+                <div class="guide-corner bl"></div>
+                <div class="guide-corner br"></div>
+                <div class="guide-crosshair"></div>
+                <span class="guide-text">COLOCAR PRODUCTO AQUÍ</span>
+            </div>
         </div>
+        <!-- INDICADOR DE ZOOM FOTO -->
+        <div class="zoom-indicator" id="photoZoomIndicator">1.0x</div>
         <button class="camera-capture" onclick="tomarFoto()">📸</button>
     </div>
 
@@ -145,154 +253,462 @@
 
     <script>
         // ====================================================================
-        // ZONA DE CONFIGURACIÓN SEGURA (NO TOCAR ABAJO DE ESTA LÍNEA)
+        // ZONA DE CONFIGURACIÓN SEGURA (NO TOCAR NADA DE ESTA SECCIÓN)
         // ====================================================================
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnu0zTKRdBOz9aHsoL2MvVgMQNGOrNfvwEkyJUMUdnuz1GGo75ufxsOL45_5SjWURh/exec'; 
-        const FOLDER_ID = '1siuX4Rju_6eVwdVsGnl4nCZ6IO4ATrzQ'; 
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnu0zTKRdBOz9aHsoL2MvVgMQNGOrNfvwEkyJUMUdnuz1GGo75ufxsOL45_5SjWURh/exec';
+        const FOLDER_ID = '1siuX4Rju_6eVwdVsGnl4nCZ6IO4ATrzQ';
         // ====================================================================
 
+
+        // ====================================================================
+        // VARIABLES DE ESTADO
+        // ====================================================================
         let html5QrCode = null;
-        let codigoArticulo = '';
-        let photoCount = 0;
-        let videoStreamFoto = null;
-        let currentVideoTrack = null; // Para controlar la linterna
+        let parsedBarcode = null;       // Objeto con article, color, size, separator, raw
+        let taxonomyMode = 'article';   // 'article' | 'articleColor' | 'articleColorSize'
+        let lastFullCode = '';          // Último código completo escaneado (para comparar y contar fotos)
+        let photoCount = 1;             // Número de orden de la foto para el código actual
+        let videoStreamFoto = null;     // Stream de la cámara de fotos
+        let currentVideoTrack = null;   // Track de video actual (para linterna/zoom/autofoco)
+        let scannerZoomLevel = 1;       // Nivel de zoom del escáner
+        let photoZoomLevel = 1;         // Nivel de zoom de la foto (pellizco)
 
+        // Variables para pellizco (pinch) en la foto
+        let pinchStartDist = 0;
+        let pinchStartZoom = 1;
+        let zoomHideTimeout = null;
+
+
+        // ====================================================================
+        // ELEMENTOS DEL DOM
+        // ====================================================================
         const elemResultado = document.getElementById('codigoResultado');
+        const photoNumDisplay = document.getElementById('photoNumDisplay');
         const btnScan = document.getElementById('btnScan');
         const btnCapture = document.getElementById('btnCapture');
         const logArea = document.getElementById('logArea');
         const scannerBoxContainer = document.getElementById('scannerBoxContainer');
+        const photoBoxContainer = document.getElementById('photoBoxContainer');
         const btnFlash = document.getElementById('btnFlash');
         const switchVoz = document.getElementById('switchVoz');
+        const zoomLabel = document.getElementById('zoomLabel');
+        const photoZoomIndicator = document.getElementById('photoZoomIndicator');
+        const videoFoto = document.getElementById('videoFoto');
 
+
+        // ====================================================================
+        // FUNCIONES UTILITARIAS
+        // ====================================================================
         function addLog(message, type = 'info') {
             const time = new Date().toLocaleTimeString();
             logArea.innerHTML += `<br><span class="log-${type}">[${time}] ${message}</span>`;
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        // --- SINTETIZADOR DE VOZ CON SWITCH ---
         function hablar(texto) {
-            if (!switchVoz.checked) return; // Si está apagado, no hace nada
+            if (!switchVoz.checked) return;
             if ('speechSynthesis' in window) {
                 const mensaje = new SpeechSynthesisUtterance(texto);
                 mensaje.lang = 'es-ES';
-                mensaje.rate = 0.9; 
+                mensaje.rate = 0.9;
                 window.speechSynthesis.speak(mensaje);
             }
         }
 
-        // --- CONTROL DE LINTERNA ---
+
+        // ====================================================================
+        // PARSEO DE CÓDIGO DE BARRA (MEJORADO)
+        // Separa por "/" o "!" en: Artículo + Color + Talle
+        // ====================================================================
+        function parseBarcode(raw) {
+            const text = raw.trim();
+            let separator = null;
+            let segments;
+
+            if (text.includes('!')) {
+                separator = '!';
+                segments = text.split('!');
+            } else if (text.includes('/')) {
+                separator = '/';
+                segments = text.split('/');
+            } else {
+                segments = [text];
+            }
+
+            return {
+                article: (segments[0] || '').trim(),
+                color:   segments.length > 1 ? (segments[1] || '').trim() : '',
+                size:    segments.length > 2 ? (segments[2] || '').trim() : '',
+                separator: separator,
+                raw: text
+            };
+        }
+
+        // Construye el nombre del archivo según el modo de taxonomía seleccionado
+        function buildFileName(parsed, mode) {
+            if (!parsed.separator) return parsed.article;
+
+            const sep = parsed.separator;
+            const segments = parsed.raw.split(sep);
+
+            switch(mode) {
+                case 'article':
+                    return segments[0];
+                case 'articleColor':
+                    // Toma los primeros 2 segmentos
+                    return segments.slice(0, 2).join(sep);
+                case 'articleColorSize':
+                    // Toma TODOS los segmentos (preserva separadores vacíos como !!)
+                    return segments.join(sep);
+                default:
+                    return segments[0];
+            }
+        }
+
+
+        // ====================================================================
+        // SWITCHES DE TAXONOMÍA (modo de nombre de archivo)
+        // ====================================================================
+        document.querySelectorAll('.tax-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tax-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                taxonomyMode = this.dataset.mode;
+                addLog('Modo nombre: ' + this.textContent.trim(), 'info');
+            });
+        });
+
+
+        // ====================================================================
+        // LINTERNA
+        // ====================================================================
         async function toggleFlash() {
             if (!currentVideoTrack) return addLog("Cámara no lista.", "error");
             try {
                 const capabilities = currentVideoTrack.getCapabilities();
                 if (!capabilities.torch) return addLog("Este celular no tiene linterna.", "error");
-                
-                const isActive = capabilities.torch ? !currentVideoTrack.getSettings().torch : false;
+                const isActive = !currentVideoTrack.getSettings().torch;
                 await currentVideoTrack.applyConstraints({ advanced: [{ torch: isActive }] });
-                
                 btnFlash.classList.toggle('on', isActive);
                 addLog(isActive ? "Linterna ON." : "Linterna OFF.", "info");
             } catch (err) {
-                addLog("Error al cambiar linterna: " + err, "error");
+                addLog("Error linterna: " + err, "error");
             }
         }
 
-        // --- ESCÁNER MEJORADO (Enfoque automático) ---
+
+        // ====================================================================
+        // INTENTAR ACTIVAR AUTO-ENFOQUE CONTINUO
+        // ====================================================================
+        async function intentarAutofoco(track) {
+            if (!track) return;
+            try {
+                const caps = track.getCapabilities();
+                if (caps.focusMode) {
+                    const modes = caps.focusMode;
+                    if (modes.includes('continuous')) {
+                        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                        addLog("Auto-enfoque continuo: ON", "info");
+                    } else if (modes.includes('auto')) {
+                        // Fallback: modo auto
+                        await track.applyConstraints({ advanced: [{ focusMode: 'auto' }] });
+                        addLog("Auto-enfoque: ON (modo auto)", "info");
+                    }
+                } else {
+                    addLog("Auto-enfoque no disponible en este dispositivo.", "info");
+                }
+            } catch(e) {
+                addLog("Auto-enfoque: no soportado.", "info");
+            }
+        }
+
+
+        // ====================================================================
+        // ESCÁNER MEJORADO (Code 39 + Auto-enfoque + Zoom hardware)
+        // ====================================================================
         btnScan.addEventListener('click', () => {
             document.getElementById('scannerView').classList.add('active');
-            addLog("Abriendo escáner ultrarrápido...", "info");
-            setTimeout(startScanner, 500);
+            addLog("Abriendo escáner...", "info");
+            scannerZoomLevel = 1;
+            zoomLabel.textContent = '1.0x';
+            setTimeout(iniciarScanner, 500);
         });
 
-        function startScanner() {
+        function iniciarScanner() {
             html5QrCode = new Html5Qrcode("reader");
-            const config = { 
-                fps: 20, // Subimos a 20 fotogramas por segundo para lectura instantánea
-                qrbox: function(vw, vh) { 
-                    let s = Math.min(vw, vh) * 0.85; // Damos un poco más de espacio para Code 39
-                    return { width: Math.floor(s), height: Math.floor(s * 0.4) }; // Más alargado
+
+            const config = {
+                fps: 20,
+                qrbox: function(vw, vh) {
+                    // Overlay optimizado para Code 39 (más ancho que alto)
+                    let w = Math.floor(vw * 0.92);
+                    let h = Math.floor(Math.min(vw, vh) * 0.30);
+                    return { width: Math.max(w, 200), height: Math.max(h, 70) };
                 },
-                formatsToSupport: [Html5QrcodeSupportedFormats.CODE_39, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13]
+                formatsToSupport: [
+                    Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.EAN_13
+                ]
             };
-            
+
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => {
-                addLog("Escáner activo. Apuntando...", "info");
-                scannerBoxContainer.classList.add('scanning-active'); // Animación visual de enfoque
-                
-                // Capturamos la pista de video DESPUÉS para no romper la librería
+                addLog("Escáner activo. Apuntá al código...", "info");
+                scannerBoxContainer.classList.add('scanning-active');
+
+                // Capturar la pista de video DESPUÉS para no romper la librería
                 setTimeout(() => {
                     const videoElem = document.querySelector('#reader video');
                     if (videoElem && videoElem.srcObject) {
                         const tracks = videoElem.srcObject.getVideoTracks();
-                        if (tracks.length > 0) currentVideoTrack = tracks[0];
+                        if (tracks.length > 0) {
+                            currentVideoTrack = tracks[0];
+                            intentarAutofoco(currentVideoTrack);
+                        }
                     }
-                }, 1000);
+                }, 1500);
             })
-            .catch(err => { addLog("ERROR cámara: " + err, "error"); cerrarScanner(); });
+            .catch(err => {
+                addLog("ERROR cámara: " + err, "error");
+                cerrarScanner();
+            });
         }
 
+        // Zoom hardware para el escáner (afecta el video real → mejora lectura)
+        async function ajustarZoomEscanner(delta) {
+            if (!currentVideoTrack) return;
+            try {
+                const caps = currentVideoTrack.getCapabilities();
+                if (caps.zoom) {
+                    scannerZoomLevel = Math.max(caps.zoom.min, Math.min(caps.zoom.max, scannerZoomLevel + delta));
+                    scannerZoomLevel = Math.round(scannerZoomLevel * 10) / 10; // Redondear a 1 decimal
+                    await currentVideoTrack.applyConstraints({ advanced: [{ zoom: scannerZoomLevel }] });
+                    zoomLabel.textContent = scannerZoomLevel.toFixed(1) + 'x';
+                    addLog("Zoom escáner: " + scannerZoomLevel.toFixed(1) + 'x', "info");
+                } else {
+                    addLog("Zoom hardware no soportado en este dispositivo.", "error");
+                }
+            } catch(e) {
+                addLog("Error zoom: " + e, "error");
+            }
+        }
+
+        // Callback cuando se lee un código correctamente
         function onScanSuccess(decodedText) {
-            codigoArticulo = decodedText.split('/')[0].trim(); 
-            elemResultado.innerText = codigoArticulo; elemResultado.classList.add('active');
-            btnCapture.disabled = false; 
-            
-            hablar("Código detectado: " + codigoArticulo.replace(/-/g, ' guion ')); // Voz inteligente
-            
-            addLog(`Código: ${codigoArticulo}`, "success");
-            cerrarScanner(); 
+            // Parsear el código de barras completo
+            parsedBarcode = parseBarcode(decodedText);
+            const fullCode = buildFileName(parsedBarcode, taxonomyMode);
+
+            // Lógica del contador de fotos: si es el mismo código, suma; si es distinto, reinicia
+            if (fullCode === lastFullCode) {
+                photoCount++;
+            } else {
+                photoCount = 1;
+                lastFullCode = fullCode;
+            }
+
+            // Mostrar en pantalla
+            elemResultado.innerText = fullCode;
+            elemResultado.classList.add('active');
+            photoNumDisplay.innerText = 'Próxima foto: #' + photoCount;
+            btnCapture.disabled = false;
+
+            // Voz: dice el artículo completo
+            hablar("Código detectado: " + parsedBarcode.article.replace(/-/g, ' guion '));
+
+            // Log detallado
+            let detalle = 'Leído: ' + parsedBarcode.raw;
+            detalle += ' → Art: ' + parsedBarcode.article;
+            if (parsedBarcode.color) detalle += ' | Color: ' + parsedBarcode.color;
+            if (parsedBarcode.size) detalle += ' | Talle: ' + parsedBarcode.size;
+            detalle += ' → Archivo: ' + fullCode + '_' + photoCount + '.jpg';
+            addLog(detalle, "success");
+
+            cerrarScanner();
         }
 
         function cerrarScanner() {
-            // Apagamos linterna al salir
+            // Apagar linterna al salir
             if (currentVideoTrack && currentVideoTrack.getSettings().torch) {
-                currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(()=>{});
+                currentVideoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
                 btnFlash.classList.remove('on');
             }
             currentVideoTrack = null;
-            scannerBoxContainer.classList.remove('scanning-active'); // Quitamos animación
+            scannerBoxContainer.classList.remove('scanning-active');
 
-            if (html5QrCode) html5QrCode.stop().then(() => { html5QrCode.clear(); document.getElementById('scannerView').classList.remove('active'); }).catch(() => document.getElementById('scannerView').classList.remove('active'));
-            else document.getElementById('scannerView').classList.remove('active');
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    document.getElementById('scannerView').classList.remove('active');
+                }).catch(() => document.getElementById('scannerView').classList.remove('active'));
+            } else {
+                document.getElementById('scannerView').classList.remove('active');
+            }
         }
 
-        // --- FOTO (ZONA BLINDADA - NO TOCAR) ---
+
+        // ====================================================================
+        // CÁMARA DE FOTO (con guía cuadrada, pinch-to-zoom, auto-enfoque)
+        // ====================================================================
         btnCapture.addEventListener('click', async () => {
-            if(!codigoArticulo) return addLog("ERROR: Escanee el código primero.", "error");
+            if (!parsedBarcode) return addLog("ERROR: Escanee el código primero.", "error");
             document.getElementById('photoView').classList.add('active');
             addLog("Abriendo cámara de foto...", "info");
+
+            // Resetear zoom
+            photoZoomLevel = 1;
+            videoFoto.style.transform = 'scale(1)';
+
             try {
-                videoStreamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
-                document.getElementById('videoFoto').srcObject = videoStreamFoto;
-            } catch (err) { addLog("ERROR: No hay cámara.", "error"); cerrarFoto(); }
+                // Pedir mayor resolución para mejor calidad al recortar a 1200x1200
+                videoStreamFoto = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "environment",
+                        width: { ideal: 1600 },
+                        height: { ideal: 1200 }
+                    }
+                });
+                videoFoto.srcObject = videoStreamFoto;
+
+                // Intentar auto-enfoque después de un momento
+                setTimeout(() => {
+                    if (videoStreamFoto) {
+                        const track = videoStreamFoto.getVideoTracks()[0];
+                        if (track) intentarAutofoco(track);
+                    }
+                }, 1200);
+            } catch (err) {
+                addLog("ERROR: No hay cámara. " + err, "error");
+                cerrarFoto();
+            }
         });
 
+        // --- TAP TO FOCUS en la vista de foto ---
+        photoBoxContainer.addEventListener('click', async function(e) {
+            // Ignorar si es un pellizco (2 dedos)
+            if (e.touches && e.touches.length > 1) return;
+            // Ignorar clicks en los elementos overlay
+            if (e.target !== photoBoxContainer && e.target !== videoFoto) return;
+
+            if (videoStreamFoto) {
+                const track = videoStreamFoto.getVideoTracks()[0];
+                if (!track) return;
+
+                // Mostrar anillo de enfoque visual
+                const rect = photoBoxContainer.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                mostrarAnilloEnfoque(x, y);
+
+                // Intentar re-trigger autofocus
+                try {
+                    const caps = track.getCapabilities();
+                    if (caps.focusMode) {
+                        if (caps.focusMode.includes('continuous')) {
+                            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                        }
+                    }
+                } catch(e) {}
+            }
+        });
+
+        function mostrarAnilloEnfoque(x, y) {
+            const ring = document.createElement('div');
+            ring.className = 'focus-ring';
+            ring.style.left = x + 'px';
+            ring.style.top = y + 'px';
+            photoBoxContainer.appendChild(ring);
+            setTimeout(() => ring.remove(), 700);
+        }
+
+
+        // --- PINCH TO ZOOM en la vista de foto ---
+        photoBoxContainer.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                pinchStartDist = getTouchDist(e.touches[0], e.touches[1]);
+                pinchStartZoom = photoZoomLevel;
+            }
+        }, { passive: false });
+
+        photoBoxContainer.addEventListener('touchmove', function(e) {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const dist = getTouchDist(e.touches[0], e.touches[1]);
+                photoZoomLevel = Math.max(1, Math.min(5, pinchStartZoom * (dist / pinchStartDist)));
+                photoZoomLevel = Math.round(photoZoomLevel * 10) / 10;
+
+                // Aplicar zoom visual al video
+                videoFoto.style.transform = 'scale(' + photoZoomLevel + ')';
+
+                // Mostrar indicador de zoom
+                photoZoomIndicator.textContent = photoZoomLevel.toFixed(1) + 'x';
+                photoZoomIndicator.classList.add('visible');
+
+                clearTimeout(zoomHideTimeout);
+                zoomHideTimeout = setTimeout(() => {
+                    photoZoomIndicator.classList.remove('visible');
+                }, 1500);
+            }
+        }, { passive: false });
+
+        photoBoxContainer.addEventListener('touchend', function(e) {
+            // Mantener el nivel de zoom actual
+        });
+
+        function getTouchDist(t1, t2) {
+            return Math.sqrt(Math.pow(t1.clientX - t2.clientX, 2) + Math.pow(t1.clientY - t2.clientY, 2));
+        }
+
+
+        // ====================================================================
+        // TOMAR FOTO (recorte cuadrado 1200x1200 con soporte de zoom)
+        // ====================================================================
         function tomarFoto() {
-            const video = document.getElementById('videoFoto');
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 1200; canvas.height = 1200;
-            let size = Math.min(video.videoWidth, video.videoHeight);
-            ctx.drawImage(video, (video.videoWidth - size)/2, (video.videoHeight - size)/2, size, size, 0, 0, 1200, 1200);
+            canvas.width = 1200;
+            canvas.height = 1200;
+
+            const video = videoFoto;
+
+            // Calcular recorte cuadrado considerando el nivel de zoom
+            const baseSize = Math.min(video.videoWidth, video.videoHeight);
+            const zoom = photoZoomLevel;
+            const srcSize = baseSize / zoom;
+            const srcX = (video.videoWidth - srcSize) / 2;
+            const srcY = (video.videoHeight - srcSize) / 2;
+
+            // Dibujar el área zoomeda en el canvas de 1200x1200
+            ctx.drawImage(video, srcX, srcY, srcSize, srcSize, 0, 0, 1200, 1200);
+
+            // Resetear zoom visual después de capturar
+            videoFoto.style.transform = 'scale(1)';
+            photoZoomLevel = 1;
 
             btnCapture.innerText = "⏳ PREPARANDO FOTO...";
             btnCapture.style.background = "linear-gradient(45deg, #555, #333)";
 
             canvas.toBlob((blob) => {
                 cerrarFoto();
-                addLog(`Imagen lista (${(blob.size/1024).toFixed(2)} KB). Convirtiendo...`, "info");
+                addLog('Imagen lista (' + (blob.size / 1024).toFixed(1) + ' KB). Convirtiendo...', "info");
 
+                // ====================================================================
+                // ZONA BLINDADA: CONSTRUCCIÓN DEL NOMBRE + SUBIDA A DRIVE
+                // El nombre usa la taxonomía seleccionada + número de orden
+                // ====================================================================
                 const meta = document.getElementById('inputMeta').value;
-                let nombreArchivo = `${codigoArticulo}_${photoCount++}`;
-                if(meta) nombreArchivo += `_${meta.replace(/\s+/g, '_')}`;
+                const fullCode = buildFileName(parsedBarcode, taxonomyMode);
+                let nombreArchivo = fullCode + '_' + photoCount;
+                if (meta) nombreArchivo += '_' + meta.replace(/\s+/g, '_');
                 nombreArchivo += ".jpg";
-                
+                // ====================================================================
+
                 const reader = new FileReader();
                 reader.onload = async function() {
-                    const base64data = reader.result.split(',')[1]; 
-                    
+                    const base64data = reader.result.split(',')[1];
+
                     btnCapture.innerText = "⏳ SUBIENDO A DRIVE...";
                     addLog("Enviando al servidor proxy...", "info");
 
@@ -311,19 +727,19 @@
                         } catch (errorJSON) {
                             throw new Error("Sesión expirada de Google. Se abrió ventana para autorizar.");
                         }
-                        
-                        if(result.status === "success") {
-                            addLog(`¡ÉXITO TOTAL! ${nombreArchivo} subido.`, "success");
+
+                        if (result.status === "success") {
+                            addLog('¡ÉXITO TOTAL! ' + nombreArchivo + ' subido.', "success");
                             resetearEstadoApp();
                         } else {
                             throw new Error(result.message || "Error en el proxy");
                         }
                     } catch (e) {
-                        if(e.message.includes("Sesión expirada")) {
+                        if (e.message.includes("Sesión expirada")) {
                             window.open(APPS_SCRIPT_URL, '_blank');
                             addLog("VENTANA ABIERTA: Aceptá el permiso y volvé a tomar la foto.", "error");
                         } else {
-                            addLog(`ERROR DE RED: ${e.message}`, "error");
+                            addLog("ERROR DE RED: " + e.message, "error");
                         }
                         resetearBotonPrincipal();
                     }
@@ -333,7 +749,12 @@
         }
 
         function cerrarFoto() {
-            if (videoStreamFoto) { videoStreamFoto.getTracks().forEach(track => track.stop()); videoStreamFoto = null; }
+            if (videoStreamFoto) {
+                videoStreamFoto.getTracks().forEach(track => track.stop());
+                videoStreamFoto = null;
+            }
+            videoFoto.style.transform = 'scale(1)';
+            photoZoomLevel = 1;
             document.getElementById('photoView').classList.remove('active');
         }
 
@@ -345,9 +766,14 @@
 
         function resetearEstadoApp() {
             resetearBotonPrincipal();
-            elemResultado.innerText = "Ninguno"; elemResultado.classList.remove('active');
-            codigoArticulo = ''; btnCapture.disabled = true;
+            elemResultado.innerText = "Ninguno";
+            elemResultado.classList.remove('active');
+            photoNumDisplay.innerText = '';
+            parsedBarcode = null;
+            btnCapture.disabled = true;
             document.getElementById('inputMeta').value = '';
+            // NOTA: lastFullCode y photoCount NO se resetean acá.
+            // Así, si el usuario escanea el mismo código de nuevo, el contador sigue sumando.
         }
     </script>
 </body>

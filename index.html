@@ -247,6 +247,7 @@
         <button class="camera-flash" id="btnFlash" onclick="toggleFlash()">🔦</button>
         <button class="camera-close" onclick="cerrarScanner()">X</button>
         <div class="camera-box" id="scannerBoxContainer">
+            <video id="scannerVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:none;"></video>
             <div id="reader"></div>
             <div class="scan-overlay"></div>
         </div>
@@ -256,6 +257,7 @@
             <span class="zoom-label" id="zoomLabel">1.0x</span>
             <button class="zoom-btn" onclick="ajustarZoomEscanner(0.5)">+</button>
         </div>
+        <div id="engineBadge" style="margin-top:6px;font-size:10px;color:#555;font-family:monospace;text-align:center;letter-spacing:0.5px;"></div>
     </div>
 
     <!-- ==================== VISTA DE LA FOTO ==================== -->
@@ -323,6 +325,13 @@
         let flashDisponible = null;  // null = no verificado, true/false = cacheado
         let pendingParsed = null;   // Código pendiente de confirmación
         let scanRejectCount = 0;    // Cuenta lecturas rechazadas por validación (para log)
+
+        // Variables para escáner nativo (BarcodeDetector API)
+        let useNativeScanner = false;
+        let nativeBarcodeDetector = null;
+        let nativeStream = null;
+        let nativeScanning = false;
+        let scanLock = false;        // Previene doble detección en el mismo frame
 
 
         // ====================================================================
@@ -512,13 +521,100 @@
             setTimeout(iniciarScanner, 500);
         });
 
-        function iniciarScanner() {
+        async function iniciarScanner() {
+            // ===== MOTOR 1: NATIVO (BarcodeDetector API) =====
+            // Usa el motor ML Kit de Android — el mismo que Barcode Scanner+
+            if ('BarcodeDetector' in window) {
+                try {
+                    const supported = await BarcodeDetector.getSupportedFormats();
+                    if (supported.includes('code_39')) {
+                        nativeBarcodeDetector = new BarcodeDetector({ formats: ['code_39', 'code_128'] });
+                        useNativeScanner = true;
+                        addLog("Motor: NATIVO (BarcodeDetector API)", "success");
+                        document.getElementById('engineBadge').innerHTML = '<span style="color:#00ff00">● NATIVO</span>';
+                        return iniciarScannerNativo();
+                    }
+                } catch(e) {
+                    addLog("BarcodeDetector check: " + e, "info");
+                }
+            }
+
+            // ===== MOTOR 2: FALLBACK (html5-qrcode) =====
+            useNativeScanner = false;
+            addLog("Motor: FALLBACK (html5-qrcode)", "info");
+            document.getElementById('engineBadge').innerHTML = '<span style="color:#ffaa00">● FALLBACK</span>';
+            iniciarScannerFallback();
+        }
+
+        // ====================================================================
+        // ESCÁNER NATIVO (BarcodeDetector API) — motor ML Kit de Android
+        // ====================================================================
+        async function iniciarScannerNativo() {
+            const scannerVideo = document.getElementById('scannerVideo');
+            scannerVideo.style.display = 'block';
+            document.getElementById('reader').style.display = 'none';
+
+            try {
+                nativeStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "environment",
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                });
+                scannerVideo.srcObject = nativeStream;
+                await scannerVideo.play();
+
+                // Obtener track para zoom, flash y autofoco
+                const tracks = nativeStream.getVideoTracks();
+                if (tracks.length > 0) {
+                    currentVideoTrack = tracks[0];
+                    intentarAutofoco(currentVideoTrack);
+                }
+
+                addLog("Escáner NATIVO activo. Apuntá al código...", "info");
+                scannerBoxContainer.classList.add('scanning-active');
+
+                nativeScanning = true;
+                nativeScanLoop();
+            } catch(err) {
+                addLog("ERROR cámara nativa: " + err, "error");
+                // Intentar fallback automáticamente
+                useNativeScanner = false;
+                scannerVideo.style.display = 'none';
+                document.getElementById('reader').style.display = 'block';
+                document.getElementById('engineBadge').innerHTML = '<span style="color:#ffaa00">● FALLBACK</span>';
+                iniciarScannerFallback();
+            }
+        }
+
+        async function nativeScanLoop() {
+            if (!nativeScanning) return;
+            try {
+                const barcodes = await nativeBarcodeDetector.detect(document.getElementById('scannerVideo'));
+                if (barcodes.length > 0) {
+                    const decodedText = barcodes[0].rawValue;
+                    onScanSuccess(decodedText);
+                    if (!nativeScanning) return; // Se cerró durante el callback
+                }
+            } catch(e) {}
+            if (nativeScanning) {
+                requestAnimationFrame(nativeScanLoop);
+            }
+        }
+
+        // ====================================================================
+        // ESCÁNER FALLBACK (html5-qrcode) — solo si no hay BarcodeDetector
+        // ====================================================================
+        function iniciarScannerFallback() {
+            document.getElementById('scannerVideo').style.display = 'none';
+            document.getElementById('reader').style.display = 'block';
+
             html5QrCode = new Html5Qrcode("reader");
 
             const config = {
                 fps: 15,
                 qrbox: function(vw, vh) {
-                    // Overlay optimizado para Code 39 (más ancho que alto)
                     let w = Math.floor(vw * 0.92);
                     let h = Math.floor(Math.min(vw, vh) * 0.30);
                     return { width: Math.max(w, 200), height: Math.max(h, 70) };
@@ -526,16 +622,14 @@
                 formatsToSupport: [
                     Html5QrcodeSupportedFormats.CODE_39,
                     Html5QrcodeSupportedFormats.CODE_128
-                    // EAN_13 eliminado: solo se usa en el input manual (Sección 1)
                 ]
             };
 
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => {
-                addLog("Escáner activo. Apuntá al código...", "info");
+                addLog("Escáner FALLBACK activo. Apuntá al código...", "info");
                 scannerBoxContainer.classList.add('scanning-active');
 
-                // Capturar la pista de video DESPUÉS para no romper la librería
                 setTimeout(() => {
                     const videoElem = document.querySelector('#reader video');
                     if (videoElem && videoElem.srcObject) {
@@ -574,6 +668,9 @@
 
         // Callback cuando se lee un código - VALIDA y muestra confirmación
         function onScanSuccess(decodedText) {
+            // Prevenir doble detección en el mismo frame
+            if (scanLock) return;
+
             // PASO 1: Validar que no sea basura
             if (!validarCodigo(decodedText)) {
                 scanRejectCount++;
@@ -589,6 +686,7 @@
             const fullCode = buildFileName(parsed, taxonomyMode);
 
             // PASO 3: Cerrar escáner y mostrar confirmación
+            scanLock = true;
             cerrarScanner(() => {
                 mostrarConfirmacion(parsed, fullCode);
             });
@@ -642,12 +740,14 @@
 
             scanRejectCount = 0;
             pendingParsed = null;
+            scanLock = false;
         }
 
         // Usuario rechaza el código, vuelve a escanear
         function rechazarCodigo() {
             document.getElementById('confirmView').classList.remove('active');
             pendingParsed = null;
+            scanLock = false;
             addLog('Código rechazado. Reescaneando...', 'info');
             // Reabrir el escáner automáticamente
             document.getElementById('scannerView').classList.add('active');
@@ -655,6 +755,20 @@
         }
 
         function cerrarScanner(callback) {
+            // Detener escáner nativo si está activo
+            if (useNativeScanner) {
+                nativeScanning = false;
+                if (nativeStream) {
+                    nativeStream.getTracks().forEach(t => t.stop());
+                    nativeStream = null;
+                }
+                const sv = document.getElementById('scannerVideo');
+                sv.srcObject = null;
+                sv.style.display = 'none';
+                document.getElementById('reader').style.display = 'block';
+                useNativeScanner = false;
+            }
+
             // Apagar linterna al salir
             if (currentVideoTrack) {
                 try {
@@ -669,12 +783,14 @@
 
             const ocultar = () => {
                 document.getElementById('scannerView').classList.remove('active');
+                document.getElementById('engineBadge').innerHTML = '';
                 if (callback) callback();
             };
 
             if (html5QrCode) {
                 html5QrCode.stop().then(() => {
                     html5QrCode.clear();
+                    html5QrCode = null;
                     ocultar();
                 }).catch(() => ocultar());
             } else {

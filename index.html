@@ -444,12 +444,12 @@
             try {
                 if (typeof currentVideoTrack.getCapabilities !== 'function') {
                     flashDisponible = false;
-                    return addLog("Linterna: no disponible.", "info");
+                    return addLog("Linterna: no disponible en este navegador. Probá prenderla desde el panel rápido de Android (deslizar de arriba a abajo).", "info");
                 }
                 const capabilities = currentVideoTrack.getCapabilities();
                 if (!capabilities.torch) {
                     flashDisponible = false;
-                    return addLog("Linterna: no disponible en este dispositivo.", "info");
+                    return addLog("Linterna: no soportada por este teléfono vía navegador. Prendela desde el panel rápido de Android antes de abrir la cámara.", "info");
                 }
                 flashDisponible = true;
                 const isActive = !currentVideoTrack.getSettings().torch;
@@ -812,15 +812,21 @@
             videoFoto.style.transform = 'scale(1)';
 
             try {
-                // Pedir mayor resolución para mejor calidad al recortar a 1200x1200
+                // Pedir resolución FULL del sensor (Samsung M12: 48MP → 12MP binned = 4032x3024)
+                // Resolución baja (1600x1200) causaba desenfoque: el browser usaba crop digital
                 videoStreamFoto = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "environment",
-                        width: { ideal: 1600 },
-                        height: { ideal: 1200 }
+                        width: { ideal: 4032 },
+                        height: { ideal: 3024 }
                     }
                 });
                 videoFoto.srcObject = videoStreamFoto;
+
+                // Verificar resolución real obtenida
+                videoFoto.onloadedmetadata = () => {
+                    addLog("Cámara foto: " + videoFoto.videoWidth + "x" + videoFoto.videoHeight, "info");
+                };
 
                 // Intentar auto-enfoque después de un momento
                 setTimeout(() => {
@@ -916,7 +922,43 @@
         // ====================================================================
         // TOMAR FOTO (recorte cuadrado 1200x1200 con soporte de zoom)
         // ====================================================================
-        function tomarFoto() {
+        async function tomarFoto() {
+            // ===== PASO 1: FORZAR ENFOQUE ANTES DE CAPTURAR =====
+            btnCapture.innerText = "🔄 ENFOCANDO...";
+            btnCapture.style.background = "linear-gradient(45deg, #ffaa00, #ff6600)";
+            addLog("Forzando enfoque antes de capturar...", "info");
+
+            // Re-trigger autofocus y esperar a que se estabilice
+            if (videoStreamFoto) {
+                const track = videoStreamFoto.getVideoTracks()[0];
+                if (track) {
+                    try {
+                        const caps = track.getCapabilities();
+                        // Intentar forzar enfoque a distancia cercana (productos)
+                        if (caps.focusDistance) {
+                            const minDist = caps.focusDistance.min;
+                            const maxDist = caps.focusDistance.max;
+                            // Usar 1/4 del rango como distancia para producto cercano
+                            const nearFocus = minDist + (maxDist - minDist) * 0.15;
+                            await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: nearFocus }] });
+                            addLog("Enfoque manual cercano aplicado.", "info");
+                        } else if (caps.focusMode) {
+                            // Si no hay focusDistance, re-trigger continuous
+                            if (caps.focusMode.includes('continuous')) {
+                                await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                            }
+                        }
+                    } catch(e) {
+                        addLog("Enfoque: " + (e.message || e).substring(0, 40), "info");
+                    }
+                }
+            }
+
+            // Esperar 1.5 segundos para que el enfoque se estabilice
+            await new Promise(r => setTimeout(r, 1500));
+
+            // ===== PASO 2: CAPTURAR EL FRAME =====
+            btnCapture.innerText = "📸 CAPTURANDO...";
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 1200;
@@ -941,6 +983,7 @@
             btnCapture.innerText = "⏳ PREPARANDO FOTO...";
             btnCapture.style.background = "linear-gradient(45deg, #555, #333)";
 
+            // Calidad 0.85 (antes 0.7) — mejor nitidez para redes sociales
             canvas.toBlob((blob) => {
                 cerrarFoto();
                 addLog('Imagen lista (' + (blob.size / 1024).toFixed(1) + ' KB). Convirtiendo...', "info");
@@ -996,7 +1039,7 @@
                     }
                 };
                 reader.readAsDataURL(blob);
-            }, 'image/jpeg', 0.7);
+            }, 'image/jpeg', 0.85);
         }
 
         function cerrarFoto() {
